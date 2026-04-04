@@ -24,9 +24,6 @@ def get_wind_weather_data(lat, long, data):
     else:
         print(f"Error {response.status_code}: {response.text}")
 
-import requests
-from collections import defaultdict
-
 
 def _fetch_and_aggregate(latitude: float, longitude: float, hourly_vars: list[str]) -> dict:
     """
@@ -142,3 +139,14 @@ def get_wind_climate_data(latitude: float, longitude: float) -> dict:
     return _fetch_and_aggregate(latitude, longitude, WIND_VARS)
 
 
+
+if __name__ == "__main__":
+    import json
+
+    print("=== Solar Climate — San Francisco ===")
+    solar = get_solar_climate_data(latitude=37.7749, longitude=-122.4194)
+    print(json.dumps(solar, indent=2))
+
+    print("\n=== Wind Climate — Berlin ===")
+    wind = get_wind_climate_data(latitude=52.5200, longitude=13.4050)
+    print(json.dumps(wind, indent=2))
