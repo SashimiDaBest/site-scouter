@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -49,3 +51,48 @@ class SolarAnalysisResponse(BaseModel):
     suitability_score: float
     suitable: bool
     suitability_reason: str
+
+
+class BoundingBox(BaseModel):
+    min_lat: float
+    min_lon: float
+    max_lat: float
+    max_lon: float
+
+
+class InfrastructureAnalysisRequest(BaseModel):
+    points: list[Coordinate] = Field(...)
+    cell_size_m: float = Field(default=300.0, ge=100.0, le=2_000.0)
+    imagery_provider: Literal["mapbox", "google", "sentinel", "none"] = Field(
+        default="none"
+    )
+    include_debug_layers: bool = Field(default=False)
+
+
+class CandidateRegion(BaseModel):
+    id: str
+    use_type: Literal["solar", "wind", "data_center"]
+    polygon: list[Coordinate]
+    area_m2: float
+    feasibility_score: float
+    reasoning: list[str]
+    estimated_annual_output_kwh: float | None = None
+    estimated_installation_cost_usd: float
+    metadata: dict
+
+
+class InfrastructureDataSources(BaseModel):
+    imagery: str
+    vector_data: str
+    segmentation: str
+    terrain: str
+
+
+class InfrastructureAnalysisResponse(BaseModel):
+    area_m2: float
+    bbox: BoundingBox
+    centroid: Coordinate
+    subdivisions_evaluated: int
+    candidates: list[CandidateRegion]
+    data_sources: InfrastructureDataSources
+    pipeline_notes: list[str]
