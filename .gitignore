@@ -11,6 +11,8 @@ __pycache__/
 pyvenv.cfg
 requirements.txt
 
+*.joblib
+
 Lib/
 Scripts/
 
