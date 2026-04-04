@@ -7,6 +7,7 @@ from datetime import datetime
 import dataset
 
 train_loader, test_loader, ds_size = dataset.get_data()
+batch_size = dataset.get_data("batch_size")
 
 
 import torch.nn as nn
@@ -56,8 +57,8 @@ def train_one_epoch(epoch_index, tb_writer, model, optimizer, loss_fn):
 
         # Gather data and report
         running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000 # loss per batch
+        if i % batch_size == batch_size - 1:
+            last_loss = running_loss / batch_size # loss per batch
             print('  batch {} loss: {}'.format(i + 1, last_loss))
             tb_x = epoch_index * len(train_loader) + i + 1
             tb_writer.add_scalar('Loss/train', last_loss, tb_x)
