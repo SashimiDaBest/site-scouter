@@ -3,7 +3,6 @@ from torch.utils.data import random_split
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
-import utils
 
 class RenewableDataset(Dataset):
     def __init__(self, df, feature_cols, target_col):
