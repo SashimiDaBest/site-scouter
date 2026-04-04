@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   INFRASTRUCTURE_IMAGERY_PROVIDERS,
   INFRASTRUCTURE_SEGMENTATION_OPTIONS,
+  INFRASTRUCTURE_TERRAIN_PROVIDERS,
 } from "../constants/infrastructureOptions";
 
 function HelpButton({ label, help }) {
@@ -58,6 +59,7 @@ function ControlPanel({
   assetPresets,
   imageryProvider,
   segmentationBackend,
+  terrainProvider,
   cellSizeMeters,
   onEnergyTypeChange,
   onModelModeChange,
@@ -65,6 +67,7 @@ function ControlPanel({
   onAssetSpecChange,
   onImageryProviderChange,
   onSegmentationBackendChange,
+  onTerrainProviderChange,
   onCellSizeMetersChange,
   submitError,
   isReady,
@@ -76,7 +79,7 @@ function ControlPanel({
   onOpenTrend,
 }) {
   const topCandidates =
-    result?.type === "infrastructure" ? result.candidates.slice(0, 6) : [];
+    result?.candidates ? result.candidates.slice(0, 6) : [];
 
   return (
     <section
@@ -241,7 +244,7 @@ function ControlPanel({
                 </label>
               )}
 
-            {energyType === "infrastructure" && (
+            {(energyType === "infrastructure" || energyType === "solar") && (
               <label>
                 <HelpButton
                   label="Imagery provider"
@@ -262,7 +265,7 @@ function ControlPanel({
               </label>
             )}
 
-            {energyType === "infrastructure" && (
+            {(energyType === "infrastructure" || energyType === "solar") && (
               <label>
                 <HelpButton
                   label="Segmentation"
@@ -277,6 +280,27 @@ function ControlPanel({
                   {INFRASTRUCTURE_SEGMENTATION_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {(energyType === "infrastructure" || energyType === "solar") && (
+              <label>
+                <HelpButton
+                  label="Terrain"
+                  help="Terrain slope is used to screen out steep cells before build statistics are summarized."
+                />
+                <select
+                  value={terrainProvider}
+                  onChange={(event) =>
+                    onTerrainProviderChange(event.target.value)
+                  }
+                >
+                  {INFRASTRUCTURE_TERRAIN_PROVIDERS.map((provider) => (
+                    <option key={provider.value} value={provider.value}>
+                      {provider.label}
                     </option>
                   ))}
                 </select>
@@ -305,7 +329,7 @@ function ControlPanel({
               </div>
             )}
 
-          {energyType === "infrastructure" && (
+          {(energyType === "infrastructure" || energyType === "solar") && (
             <div className="spec-grid single-row">
               <label>
                 <HelpButton
@@ -342,20 +366,26 @@ function ControlPanel({
             </button>
           </div>
 
-          {result?.type === "infrastructure" && (
+          {(result?.type === "infrastructure" || result?.type === "solar_siting") && (
             <section
               className="candidate-results"
               aria-label="Infrastructure candidates"
             >
               <div className="candidate-summary">
                 <div>
-                  <strong>{result.candidateCount}</strong> ranked candidates
-                  across <strong>{result.subdivisionsEvaluated}</strong>{" "}
-                  evaluated cells
+                  <strong>{result.candidateCount}</strong>{" "}
+                  {result.type === "solar_siting" ? "valid solar subregions" : "ranked candidates"}
+                  {result.subdivisionsEvaluated ? (
+                    <>
+                      {" "}across <strong>{result.subdivisionsEvaluated}</strong>{" "}
+                      evaluated cells
+                    </>
+                  ) : null}
                 </div>
                 <div>
-                  A higher feasibility score means the site clears more of the
-                  basic screeners for the chosen use type.
+                  {result.type === "solar_siting"
+                    ? "These highlighted subregions passed imagery, vector, and terrain screening and were then packed with the selected solar preset."
+                    : "A higher feasibility score means the site clears more of the basic screeners for the chosen use type."}
                 </div>
                 <div>
                   Sources: {result.dataSources.imagery},{" "}
@@ -408,12 +438,17 @@ function ControlPanel({
 
               <div className="asset-metrics">
                 <p>Selected area: {result.areaKm2.toFixed(2)} km²</p>
+                {result.type === "solar_siting" && (
+                  <p>Valid buildable solar area: {result.validAreaKm2.toFixed(2)} km²</p>
+                )}
                 {result.assetCount !== null &&
                   result.assetCount !== undefined && (
                     <p>
                       Estimated{" "}
                       {result.type === "solar"
                         ? "units"
+                        : result.type === "solar_siting"
+                          ? "panels"
                         : result.type === "wind"
                           ? "turbines"
                           : "campuses"}
@@ -436,10 +471,20 @@ function ControlPanel({
                   Estimated project cost: ${result.totalCost.toLocaleString()}
                 </p>
                 <p>{result.suitabilityReason}</p>
-                <p>
-                  Trend period: {result.trendPeriodStart} to{" "}
-                  {result.trendPeriodEnd}
-                </p>
+                {result.type === "solar_siting" && (
+                  <p>
+                    Sources: {result.dataSources.imagery},{" "}
+                    {result.dataSources.vector_data},{" "}
+                    {result.dataSources.segmentation},{" "}
+                    {result.dataSources.terrain}
+                  </p>
+                )}
+                {result.trendPeriodStart && result.trendPeriodEnd && (
+                  <p>
+                    Trend period: {result.trendPeriodStart} to{" "}
+                    {result.trendPeriodEnd}
+                  </p>
+                )}
                 {result.dailyGeneration?.length > 0 && (
                   <p>
                     <button

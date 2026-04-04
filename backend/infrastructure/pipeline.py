@@ -61,7 +61,10 @@ def analyze_infrastructure_polygon(
 
     candidates = []
     for index, cell in enumerate(cells, start=1):
-        for builder in (solar_candidate, wind_candidate, data_center_candidate):
+        solar = solar_candidate(cell, index, request.solar_spec)
+        if solar is not None:
+            candidates.append(solar)
+        for builder in (wind_candidate, data_center_candidate):
             candidate = builder(cell, index)
             if candidate is not None:
                 candidates.append(candidate)

@@ -14,8 +14,8 @@ import { rectangleFromTwoPoints } from "../utils/geo";
 
 const CANDIDATE_COLORS = {
   solar: {
-    stroke: "#cc7a1b",
-    fill: "#f4c86b",
+    stroke: "#b42318",
+    fill: "#ef4444",
   },
   wind: {
     stroke: "#2d83b7",
@@ -117,7 +117,7 @@ function MapScene({
           />
         )}
 
-        {result?.type === "infrastructure" &&
+        {(result?.type === "infrastructure" || result?.type === "solar_siting") &&
           result.candidates.map((candidate) => {
             const colors = CANDIDATE_COLORS[candidate.useType];
             const isSelected = candidate.id === selectedCandidateId;
@@ -197,7 +197,8 @@ function MapScene({
             closeOnClick={false}
             eventHandlers={{ remove: () => onSetStatsVisible(false) }}
           >
-            {result.type === "infrastructure" && selectedCandidate ? (
+            {(result.type === "infrastructure" || result.type === "solar_siting") &&
+            selectedCandidate ? (
               <div className="result-popup">
                 <h3>{selectedCandidate.useLabel} Candidate</h3>
                 <p>
@@ -211,6 +212,19 @@ function MapScene({
                   Estimated cost: $
                   {selectedCandidate.estimatedInstallationCostUsd.toLocaleString()}
                 </p>
+                {selectedCandidate.metadata?.panel_count ? (
+                  <p>
+                    Packed panels:{" "}
+                    {selectedCandidate.metadata.panel_count.toLocaleString()}
+                  </p>
+                ) : null}
+                {selectedCandidate.metadata?.installed_capacity_kw ? (
+                  <p>
+                    Installed capacity:{" "}
+                    {selectedCandidate.metadata.installed_capacity_kw.toLocaleString()}{" "}
+                    kW
+                  </p>
+                ) : null}
                 {selectedCandidate.estimatedAnnualOutputKwh && (
                   <p>
                     Estimated output:{" "}
@@ -222,6 +236,9 @@ function MapScene({
                 )}
                 <p>{selectedCandidate.reasoning[0]}</p>
                 <p>{selectedCandidate.reasoning[1]}</p>
+                {selectedCandidate.reasoning[2] ? (
+                  <p>{selectedCandidate.reasoning[2]}</p>
+                ) : null}
                 <p>
                   Sources: {result.dataSources.imagery},{" "}
                   {result.dataSources.vector_data},{" "}
@@ -229,16 +246,20 @@ function MapScene({
                   {result.dataSources.terrain}
                 </p>
               </div>
-            ) : result.type === "infrastructure" ? (
+            ) : result.type === "infrastructure" || result.type === "solar_siting" ? (
               <div className="result-popup">
                 <h3>{result.label}</h3>
                 <p>Area: {result.areaKm2.toFixed(2)} km²</p>
+                {result.subdivisionsEvaluated ? (
+                  <p>
+                    Evaluated cells:{" "}
+                    {result.subdivisionsEvaluated.toLocaleString()}
+                  </p>
+                ) : null}
                 <p>
-                  Evaluated cells:{" "}
-                  {result.subdivisionsEvaluated.toLocaleString()}
-                </p>
-                <p>
-                  No candidate cells cleared the current feasibility thresholds.
+                  {result.type === "solar_siting"
+                    ? "No valid solar-ready subregions cleared the current screening settings."
+                    : "No candidate cells cleared the current feasibility thresholds."}
                 </p>
                 <p>
                   Sources: {result.dataSources.imagery},{" "}

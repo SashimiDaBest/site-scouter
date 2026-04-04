@@ -3,14 +3,9 @@ from __future__ import annotations
 from schemas import (
     CandidateRegion,
     Coordinate,
-    DEFAULT_CONSTRUCTION_COST_PER_M2_USD,
-    DEFAULT_PACKING_EFFICIENCY,
     DEFAULT_PANEL_AZIMUTH_DEG,
-    DEFAULT_PANEL_COST_USD,
-    DEFAULT_PANEL_RATING_W,
     DEFAULT_PANEL_TILT_DEG,
-    DEFAULT_SOLAR_PANEL_AREA_M2,
-    DEFAULT_SUNLIGHT_THRESHOLD_KWH_M2_YR,
+    SolarAssetSpec,
 )
 from solar_project import SolarProjectInputs, analyze_solar_project
 
@@ -112,7 +107,11 @@ def enrich_cells(
         )
 
 
-def solar_candidate(cell: dict, idx: int) -> CandidateRegion | None:
+def solar_candidate(
+    cell: dict,
+    idx: int,
+    solar_spec: SolarAssetSpec,
+) -> CandidateRegion | None:
     irradiance = solar_irradiance_proxy(cell["center_lat"])
     usable_ground_area = cell["open_land_area_m2"] * clamp(1.0 - cell["water_ratio"], 0.0, 1.0)
     usable_solar_area = cell["rooftop_area_m2"] + 0.5 * usable_ground_area
@@ -124,13 +123,13 @@ def solar_candidate(cell: dict, idx: int) -> CandidateRegion | None:
             area_m2=usable_solar_area,
             centroid_lat=cell["center_lat"],
             centroid_lon=cell["center_lon"],
-            panel_area_m2=DEFAULT_SOLAR_PANEL_AREA_M2,
-            panel_rating_w=DEFAULT_PANEL_RATING_W,
-            panel_cost_usd=DEFAULT_PANEL_COST_USD,
-            construction_cost_per_m2_usd=DEFAULT_CONSTRUCTION_COST_PER_M2_USD,
-            packing_efficiency=DEFAULT_PACKING_EFFICIENCY,
-            performance_ratio=0.8,
-            sunlight_threshold_kwh_m2_yr=DEFAULT_SUNLIGHT_THRESHOLD_KWH_M2_YR,
+            panel_area_m2=solar_spec.panel_area_m2,
+            panel_rating_w=solar_spec.panel_rating_w,
+            panel_cost_usd=solar_spec.panel_cost_usd,
+            construction_cost_per_m2_usd=solar_spec.construction_cost_per_m2_usd,
+            packing_efficiency=solar_spec.packing_efficiency,
+            performance_ratio=solar_spec.performance_ratio,
+            sunlight_threshold_kwh_m2_yr=solar_spec.sunlight_threshold_kwh_m2_yr,
             panel_tilt_deg=DEFAULT_PANEL_TILT_DEG,
             panel_azimuth_deg=DEFAULT_PANEL_AZIMUTH_DEG,
             state=None,

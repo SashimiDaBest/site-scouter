@@ -16,7 +16,10 @@ import TrendModal from "./components/TrendModal";
 import { ASSET_PRESETS } from "./constants/models";
 import { analyzeInfrastructureRegion } from "./lib/infrastructureAnalysisApi";
 import { mapAssetResult } from "./lib/assetResult";
-import { mapInfrastructureResult } from "./lib/infrastructureResult";
+import {
+  mapInfrastructureResult,
+  mapSolarSitingResult,
+} from "./lib/infrastructureResult";
 import {
   clamp,
   haversineMeters,
@@ -169,6 +172,7 @@ function App() {
   const [selectedModel, setSelectedModel] = useState("");
   const [imageryProvider, setImageryProvider] = useState("usgs");
   const [segmentationBackend, setSegmentationBackend] = useState("auto");
+  const [terrainProvider, setTerrainProvider] = useState("opentopodata");
   const [cellSizeMeters, setCellSizeMeters] = useState(300);
   const [solarSpec, setSolarSpec] = useState(defaultSpec("solar"));
   const [windSpec, setWindSpec] = useState(defaultSpec("wind"));
@@ -381,13 +385,42 @@ function App() {
         const infrastructureResult = await analyzeInfrastructureRegion(region, {
           imagery_provider: imageryProvider,
           segmentation_backend: segmentationBackend,
+          terrain_provider: terrainProvider,
           cell_size_m: cellSizeMeters,
+          solar_spec: solarSpec,
         });
         const mappedResult = mapInfrastructureResult(infrastructureResult, {
           imageryProvider,
           segmentationBackend,
+          terrainProvider,
           cellSizeMeters,
         });
+        setSelectedCandidateId(mappedResult.candidates[0]?.id ?? null);
+        setResult(mappedResult);
+        setTrendOpen(false);
+      } else if (energyType === "solar") {
+        const infrastructureResult = await analyzeInfrastructureRegion(region, {
+          imagery_provider: imageryProvider,
+          segmentation_backend: segmentationBackend,
+          terrain_provider: terrainProvider,
+          cell_size_m: cellSizeMeters,
+          solar_spec: solarSpec,
+        });
+        const presetName =
+          modelMode === "predefined"
+            ? (assetPresets.find((preset) => preset.id === selectedModel)?.label ??
+                null)
+            : "Custom specification";
+        const mappedResult = mapSolarSitingResult(
+          infrastructureResult,
+          {
+            imageryProvider,
+            segmentationBackend,
+            terrainProvider,
+            cellSizeMeters,
+          },
+          { presetName },
+        );
         setSelectedCandidateId(mappedResult.candidates[0]?.id ?? null);
         setResult(mappedResult);
         setTrendOpen(false);
@@ -429,7 +462,7 @@ function App() {
   };
 
   const activeInfrastructureCandidate = useMemo(() => {
-    if (result?.type !== "infrastructure") return null;
+    if (!result?.candidates) return null;
     return (
       result.candidates.find(
         (candidate) => candidate.id === selectedCandidateId,
@@ -529,6 +562,7 @@ function App() {
           assetPresets={assetPresets}
           imageryProvider={imageryProvider}
           segmentationBackend={segmentationBackend}
+          terrainProvider={terrainProvider}
           cellSizeMeters={cellSizeMeters}
           onEnergyTypeChange={(nextType) => {
             setEnergyType(nextType);
@@ -567,6 +601,7 @@ function App() {
           }}
           onImageryProviderChange={setImageryProvider}
           onSegmentationBackendChange={setSegmentationBackend}
+          onTerrainProviderChange={setTerrainProvider}
           onCellSizeMetersChange={(value) => {
             const numeric = Number(value);
             if (Number.isNaN(numeric)) {
