@@ -7,7 +7,7 @@ import utils
 class RenewableDataset(Dataset):
     def __init__(self, df, feature_cols, target_col):
         self.features = torch.tensor(df[feature_cols].values, dtype=torch.float32)
-        self.targets  = torch.tensor(df[target_col].values,  dtype=torch.float32)
+        self.targets  = torch.tensor(df[target_col].values,  dtype=torch.float32).unsqueeze(1)
 
     def __len__(self):
         return len(self.features)
