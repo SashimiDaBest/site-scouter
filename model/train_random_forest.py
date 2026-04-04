@@ -9,7 +9,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 
-import dataset
+import model.dataset_random_forest as dataset_random_forest
 import era5
 
 
@@ -23,8 +23,8 @@ def train_model(
     n_estimators: int = 300,
     max_depth: int | None = 20,
 ):
-    df = dataset.load_training_dataframe(dataset_path=dataset_path)
-    feature_columns = dataset.get_training_feature_columns()
+    df = dataset_random_forest.load_training_dataframe(dataset_path=dataset_path)
+    feature_columns = dataset_random_forest.get_training_feature_columns()
 
     X = df[feature_columns]
     y = df["p_cap_ac"]

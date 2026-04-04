@@ -19,7 +19,7 @@ def process_solar_data():
 
     final_df = None
 
-    CLIMATE_FEATURES = ""
+    CLIMATE_FEATURES = ["climate_annual_temperature_c", "climate_annual_relative_humidity_pct", "climate_annual_total_precipitation_mm", "climate_total_total_precipitation_mm", "climate_annual_snowfall_mm", "climate_total_snowfall_mm", "climate_annual_cloud_cover_pct", "era5_distance_km", ""]
     DATA_FEATURES = ["p_area", "p_tilt", "p_azimuth"]
     ORIG_SOLAR_COLS =  DATA_FEATURES + ["ylat", "xlong", "p_img_date", "eia_id"]
 
