@@ -24,7 +24,7 @@ def get_eia_generation_batch(eia_ids):
     print("Failed:", response.status_code, response.text)
     return None
 
-def get_all_generation(eia_ids, years_per_plant=10, chunk_size=None):
+def get_all_generation(eia_ids, name, years_per_plant=10, chunk_size=None):
     if chunk_size is None:
         chunk_size = 5000 // years_per_plant
 
@@ -55,6 +55,6 @@ def get_all_generation(eia_ids, years_per_plant=10, chunk_size=None):
         .rename(columns={"generation": "avg_annual_generation"})
     )
     avg_df["plantCode"] = avg_df["plantCode"].astype(int)
-    avg_df.to_csv("data/avg_eia_solar_gen.csv", index=False)
+    avg_df.to_csv(f"data/avg_eia_{name}_gen.csv", index=False)
 
     return avg_df

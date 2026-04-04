@@ -1,18 +1,15 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.tensorboard import SummaryWriter
-from datetime import datetime
 from torchmetrics import R2Score
-import dataset
-from dataset import SOLAR_MODEL_FEATURES, WIND_MODEL_FEATURES
+from dataset import SOLAR_MODEL_FEATURES, WIND_MODEL_FEATURES, get_data
+
 
 torch.manual_seed(17)
 batch_size = 32
-train_loader, test_loader, ds_size = dataset.get_data("data/processed/solar.csv", SOLAR_MODEL_FEATURES, batch_size=32)
-
-import torch.nn as nn
-import torch.nn.functional as F
+# train_loader, test_loader, ds_size = get_data("data/processed/solar.csv", SOLAR_MODEL_FEATURES, batch_size=32)
+train_loader, test_loader, ds_size = get_data("data/processed/wind.csv", WIND_MODEL_FEATURES, batch_size=32)
 
 # PyTorch models inherit from torch.nn.Module
 class Habakkuk(nn.Module):
