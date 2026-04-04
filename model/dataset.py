@@ -22,6 +22,7 @@ def get_data():
     raw_df["p_img_date"] = pd.to_datetime(raw_df["p_img_date"].astype(str), format="%Y%m%d", errors="coerce")
     for i in range(0, raw_df.shape[0]):
         df[df.shape[0]] = utils.get_solar_weather_data(raw_df.loc[i, "ylat"], raw_df.loc[i, "xlong"], raw_df.loc[i, "p_img_date"])
+        print("getting weather! ", i)
     df = df.sample(frac=1).reset_index(drop=True)
 
     solar_feature_cols = ["p_area"] + utils.get_solar_weather_features()
@@ -35,5 +36,7 @@ def get_data():
 
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
     test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False)
+
+    print("finished getting data!")
 
     return train_loader, test_loader
