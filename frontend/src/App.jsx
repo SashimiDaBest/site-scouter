@@ -1,59 +1,67 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe from 'react-globe.gl'
 import './App.css'
 
-const SOLAR_MODELS = [
-  { name: 'SunForge SF-450', kw: 0.45, areaM2: 2.1 },
-  { name: 'HelioMax HX-620', kw: 0.62, areaM2: 2.65 },
-  { name: 'Atlas Bifacial AB-700', kw: 0.7, areaM2: 3.0 },
-]
-
-const WIND_MODELS = [
-  { name: 'AeroSpin 2MW', kw: 2000, spacingM2: 120000 },
-  { name: 'VentoCore 3.5MW', kw: 3500, spacingM2: 185000 },
-  { name: 'SkyGrid 5MW', kw: 5000, spacingM2: 260000 },
-]
-
-const AVERAGE_SOLAR_KWH_PER_KM2 = 1600000
-const AVERAGE_WIND_KWH_PER_KM2 = 3100000
+const SOLAR_MODELS = ['SunForge SF-450', 'HelioMax HX-620', 'Atlas Bifacial AB-700']
+const WIND_MODELS = ['AeroSpin 2MW', 'VentoCore 3.5MW', 'SkyGrid 5MW']
+const PIN_COLORS = { p1: '#76f5c8', p2: '#ffd07c' }
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
-
-const parseCoordinatePair = (value) => {
-  const parts = value.split(',').map((p) => Number(p.trim()))
-  if (parts.length !== 2 || parts.some((v) => Number.isNaN(v))) {
-    return null
-  }
-
-  const [lat, lon] = parts
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    return null
-  }
-
-  return { lat, lon }
+const normLng = (lng) => {
+  let value = lng
+  while (value > 180) value -= 360
+  while (value < -180) value += 360
+  return value
 }
 
-const parseRegionInput = (value) => {
-  const [first, second] = value.split('|').map((part) => part.trim())
-  if (!first || !second) {
-    return null
-  }
-
-  const p1 = parseCoordinatePair(first)
-  const p2 = parseCoordinatePair(second)
-  if (!p1 || !p2) {
-    return null
-  }
-
-  return {
-    south: Math.min(p1.lat, p2.lat),
-    north: Math.max(p1.lat, p2.lat),
-    west: Math.min(p1.lon, p2.lon),
-    east: Math.max(p1.lon, p2.lon),
-  }
+const toDmsPart = (raw, isLat) => {
+  const value = Math.abs(raw)
+  const deg = Math.floor(value)
+  const minsFull = (value - deg) * 60
+  const min = Math.floor(minsFull)
+  const sec = (minsFull - min) * 60
+  const hemi = isLat ? (raw >= 0 ? 'N' : 'S') : raw >= 0 ? 'E' : 'W'
+  return `${deg}°${String(min).padStart(2, '0')}'${sec.toFixed(1)}"${hemi}`
 }
 
-const boundsFromPoints = (p1, p2) => ({
+const formatDmsPair = ({ lat, lng }) => `${toDmsPart(lat, true)} ${toDmsPart(lng, false)}`
+
+const DMS_RE =
+  /^\s*(\d{1,3})[°\s]+(\d{1,2})['\s]+(\d{1,2}(?:\.\d+)?)"?\s*([NnSs])\s+(\d{1,3})[°\s]+(\d{1,2})['\s]+(\d{1,2}(?:\.\d+)?)"?\s*([EeWw])\s*$/
+
+const parseDmsPair = (value) => {
+  const m = value.match(DMS_RE)
+  if (!m) return null
+
+  const latDeg = Number(m[1])
+  const latMin = Number(m[2])
+  const latSec = Number(m[3])
+  const latHem = m[4].toUpperCase()
+  const lngDeg = Number(m[5])
+  const lngMin = Number(m[6])
+  const lngSec = Number(m[7])
+  const lngHem = m[8].toUpperCase()
+
+  if (
+    latDeg > 90 ||
+    lngDeg > 180 ||
+    latMin >= 60 ||
+    lngMin >= 60 ||
+    latSec >= 60 ||
+    lngSec >= 60
+  ) {
+    return null
+  }
+
+  let lat = latDeg + latMin / 60 + latSec / 3600
+  let lng = lngDeg + lngMin / 60 + lngSec / 3600
+  if (latHem === 'S') lat *= -1
+  if (lngHem === 'W') lng *= -1
+
+  return { lat, lng }
+}
+
+const boundsFromTwoCoords = (p1, p2) => ({
   south: Math.min(p1.lat, p2.lat),
   north: Math.max(p1.lat, p2.lat),
   west: Math.min(p1.lng, p2.lng),
@@ -62,7 +70,7 @@ const boundsFromPoints = (p1, p2) => ({
 
 const rectangleFeature = (bounds) => ({
   type: 'Feature',
-  properties: { name: 'Selected Region' },
+  properties: { mode: 'rectangle' },
   geometry: {
     type: 'Polygon',
     coordinates: [[
@@ -75,396 +83,446 @@ const rectangleFeature = (bounds) => ({
   },
 })
 
-const areaKm2FromBounds = (bounds) => {
-  const latMid = (bounds.south + bounds.north) / 2
-  const latSpan = Math.max(0.01, Math.abs(bounds.north - bounds.south))
-  const lonSpan = Math.max(0.01, Math.abs(bounds.east - bounds.west))
-  const latKm = latSpan * 111.32
-  const lonKm = lonSpan * 111.32 * Math.cos((latMid * Math.PI) / 180)
-  return Math.max(1, latKm * Math.abs(lonKm))
+const polygonFeature = (coords, mode = 'polygon') => ({
+  type: 'Feature',
+  properties: { mode },
+  geometry: {
+    type: 'Polygon',
+    coordinates: [[...coords, coords[0]]],
+  },
+})
+
+const linePath = (coords) => ({
+  id: 'draft',
+  points: coords.map((c) => [c.lat, c.lng]),
+})
+
+const circleFromTwoPoints = (center, edge, segments = 48) => {
+  const latDist = edge.lat - center.lat
+  const lonDist = (edge.lng - center.lng) * Math.cos((center.lat * Math.PI) / 180)
+  const radiusDeg = Math.sqrt(latDist * latDist + lonDist * lonDist)
+  if (radiusDeg <= 0.001) return null
+
+  const points = Array.from({ length: segments }, (_, i) => {
+    const angle = (i / segments) * Math.PI * 2
+    const lat = center.lat + radiusDeg * Math.sin(angle)
+    const lon = normLng(center.lng + (radiusDeg * Math.cos(angle)) / Math.cos((center.lat * Math.PI) / 180))
+    return { lat: clamp(lat, -89.999, 89.999), lng: lon }
+  })
+  return points
 }
 
-const classifyAgainstAverage = (actualPerKm2, averagePerKm2) => {
-  const ratio = actualPerKm2 / averagePerKm2
-  if (ratio >= 1.12) {
-    return 'better than average'
-  }
-  if (ratio <= 0.88) {
-    return 'below average'
-  }
-  return 'average'
-}
+const centerFromBounds = (bounds) => ({
+  lat: (bounds.south + bounds.north) / 2,
+  lng: (bounds.east + bounds.west) / 2,
+})
 
-const computeLocalEstimate = ({ bounds, solarModelName, windModelName }) => {
-  const areaKm2 = areaKm2FromBounds(bounds)
-  const areaM2 = areaKm2 * 1_000_000
-
-  const solarModel =
-    SOLAR_MODELS.find((model) => model.name === solarModelName) || SOLAR_MODELS[0]
-  const windModel =
-    WIND_MODELS.find((model) => model.name === windModelName) || WIND_MODELS[0]
-
-  const latitudeCenter = (bounds.north + bounds.south) / 2
-  const windBias = clamp(Math.abs(latitudeCenter - 38) / 30, 0.4, 1.3)
-  const solarBias = clamp(1.2 - Math.abs(latitudeCenter - 33) / 45, 0.65, 1.3)
-
-  const solarCoverage = 0.23
-  const windCoverage = 0.38
-
-  const solarUnits = Math.floor((areaM2 * solarCoverage) / solarModel.areaM2)
-  const windUnits = Math.floor((areaM2 * windCoverage) / windModel.spacingM2)
-
-  const solarCapacityFactor = 0.2 * solarBias
-  const windCapacityFactor = 0.35 * windBias
-
-  const solarKwhYr = Math.round(solarUnits * solarModel.kw * 8760 * solarCapacityFactor)
-  const windKwhYr = Math.round(windUnits * windModel.kw * 8760 * windCapacityFactor)
-
-  const solarPerKm2 = solarKwhYr / areaKm2
-  const windPerKm2 = windKwhYr / areaKm2
-
-  const recommendation = solarKwhYr >= windKwhYr ? 'solar' : 'wind'
-
+const boundsFromFeature = (feature) => {
+  const ring = feature.geometry.coordinates[0]
+  const lats = ring.map((c) => c[1])
+  const lngs = ring.map((c) => c[0])
   return {
-    source: 'fallback',
-    areaKm2,
-    recommendation,
-    solar: {
-      model: solarModel.name,
-      units: solarUnits,
-      powerKwhYr: solarKwhYr,
-      rating: classifyAgainstAverage(solarPerKm2, AVERAGE_SOLAR_KWH_PER_KM2),
-    },
-    wind: {
-      model: windModel.name,
-      units: windUnits,
-      powerKwhYr: windKwhYr,
-      rating: classifyAgainstAverage(windPerKm2, AVERAGE_WIND_KWH_PER_KM2),
-    },
+    south: Math.min(...lats),
+    north: Math.max(...lats),
+    west: Math.min(...lngs),
+    east: Math.max(...lngs),
   }
 }
-
-const normalizeApiResponse = ({ data, localEstimate, selectedModels }) => {
-  if (!data || typeof data !== 'object') {
-    return localEstimate
-  }
-
-  const solarPower =
-    data.solar?.powerKwhYr ??
-    data.solar_kwh_yr ??
-    data.solarPowerKwhYr ??
-    localEstimate.solar.powerKwhYr
-  const windPower =
-    data.wind?.powerKwhYr ??
-    data.wind_kwh_yr ??
-    data.windPowerKwhYr ??
-    localEstimate.wind.powerKwhYr
-
-  const solarUnits =
-    data.solar?.units ??
-    data.solar_count ??
-    data.solarUnits ??
-    localEstimate.solar.units
-  const windUnits =
-    data.wind?.units ??
-    data.wind_count ??
-    data.windUnits ??
-    localEstimate.wind.units
-
-  const areaKm2 = data.area_km2 ?? data.areaKm2 ?? localEstimate.areaKm2
-  const recommendation = data.recommendation ?? localEstimate.recommendation
-  const solarPerKm2 = Number(solarPower) / areaKm2
-  const windPerKm2 = Number(windPower) / areaKm2
-
-  return {
-    source: 'api',
-    areaKm2,
-    recommendation,
-    solar: {
-      model: data.solar?.model ?? selectedModels.solar,
-      units: Number(solarUnits),
-      powerKwhYr: Number(solarPower),
-      rating:
-        data.solar?.rating ??
-        classifyAgainstAverage(solarPerKm2, AVERAGE_SOLAR_KWH_PER_KM2),
-    },
-    wind: {
-      model: data.wind?.model ?? selectedModels.wind,
-      units: Number(windUnits),
-      powerKwhYr: Number(windPower),
-      rating:
-        data.wind?.rating ??
-        classifyAgainstAverage(windPerKm2, AVERAGE_WIND_KWH_PER_KM2),
-    },
-  }
-}
-
-const formatNumber = (value) => Intl.NumberFormat('en-US').format(Math.round(value))
 
 function App() {
-  const [regionInput, setRegionInput] = useState('33.30,-112.15 | 33.95,-111.70')
-  const [solarModel, setSolarModel] = useState(SOLAR_MODELS[0].name)
-  const [windModel, setWindModel] = useState(WIND_MODELS[0].name)
-  const [apiEndpoint, setApiEndpoint] = useState(
-    import.meta.env.VITE_SCOUT_API_URL || 'http://localhost:8000/scout',
-  )
-  const [drawMode, setDrawMode] = useState(false)
+  const globeRef = useRef(null)
+  const [landingVisible, setLandingVisible] = useState(true)
+  const [p1, setP1] = useState({ lat: 43.7238, lng: -80.194 })
+  const [p2, setP2] = useState({ lat: 43.6118, lng: -80.0706 })
+  const [p1Text, setP1Text] = useState(formatDmsPair({ lat: 43.7238, lng: -80.194 }))
+  const [p2Text, setP2Text] = useState(formatDmsPair({ lat: 43.6118, lng: -80.0706 }))
+  const [activeCoordField, setActiveCoordField] = useState(null)
+  const [draggingPin, setDraggingPin] = useState(null)
+  const [drawMode, setDrawMode] = useState('none')
   const [drawPoints, setDrawPoints] = useState([])
-  const [regionBounds, setRegionBounds] = useState(parseRegionInput(regionInput))
-  const [result, setResult] = useState(null)
-  const [showStats, setShowStats] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [regionFeature, setRegionFeature] = useState(null)
+  const [equipmentTypes, setEquipmentTypes] = useState(['solar', 'turbine'])
+  const [solarModelMode, setSolarModelMode] = useState('select')
+  const [windModelMode, setWindModelMode] = useState('select')
+  const [solarModel, setSolarModel] = useState(SOLAR_MODELS[0])
+  const [windModel, setWindModel] = useState(WIND_MODELS[0])
+  const [isSearching, setIsSearching] = useState(false)
+  const [statsVisible, setStatsVisible] = useState(false)
+  const [dummyStats, setDummyStats] = useState(null)
+  const [userMovedCamera, setUserMovedCamera] = useState(false)
+  const [searchCount, setSearchCount] = useState(0)
+  const [cameraLock, setCameraLock] = useState(true)
 
-  const selectedFeature = useMemo(
-    () => (regionBounds ? [rectangleFeature(regionBounds)] : []),
-    [regionBounds],
+  const rectangleFeatureMemo = useMemo(() => rectangleFeature(boundsFromTwoCoords(p1, p2)), [p1, p2])
+  const activeFeature = regionFeature || rectangleFeatureMemo
+  const selectionBounds = useMemo(() => boundsFromFeature(activeFeature), [activeFeature])
+
+  const pinPoints = useMemo(
+    () => [
+      { id: 'p1', lat: p1.lat, lng: p1.lng, color: PIN_COLORS.p1 },
+      { id: 'p2', lat: p2.lat, lng: p2.lng, color: PIN_COLORS.p2 },
+    ],
+    [p1, p2],
   )
 
-  const cornerPoints = useMemo(() => {
-    if (!regionBounds) {
-      return []
+  const drawPaths = useMemo(() => {
+    if (!drawPoints.length) return []
+    return [linePath(drawPoints)]
+  }, [drawPoints])
+
+  const onFirstInteraction = () => setLandingVisible(false)
+
+  const setPin = (id, coord) => {
+    const next = { lat: clamp(coord.lat, -89.999, 89.999), lng: normLng(coord.lng) }
+    if (id === 'p1') {
+      setP1(next)
+      setP1Text(formatDmsPair(next))
+    } else {
+      setP2(next)
+      setP2Text(formatDmsPair(next))
     }
-
-    return [
-      { lat: regionBounds.north, lng: regionBounds.west, size: 0.25 },
-      { lat: regionBounds.north, lng: regionBounds.east, size: 0.25 },
-      { lat: regionBounds.south, lng: regionBounds.west, size: 0.25 },
-      { lat: regionBounds.south, lng: regionBounds.east, size: 0.25 },
-    ]
-  }, [regionBounds])
-
-  const applyTypedRegion = () => {
-    const parsed = parseRegionInput(regionInput)
-    if (!parsed) {
-      setError('Region must be two points: lat,lon | lat,lon')
-      return
-    }
-
-    setRegionBounds(parsed)
-    setError('')
   }
 
-  const onGlobeClick = (coords) => {
-    if (!drawMode) {
-      return
-    }
-
-    setDrawPoints((current) => {
-      const next = [...current, { lat: coords.lat, lng: coords.lng }].slice(-2)
-      if (next.length === 2) {
-        const bounds = boundsFromPoints(next[0], next[1])
-        setRegionBounds(bounds)
-        setRegionInput(
-          `${bounds.south.toFixed(4)},${bounds.west.toFixed(4)} | ${bounds.north.toFixed(4)},${bounds.east.toFixed(4)}`,
-        )
-        setDrawMode(false)
-        setError('')
-      }
-      return next
-    })
+  const updateFromText = (id, value) => {
+    if (id === 'p1') setP1Text(value)
+    else setP2Text(value)
+    const parsed = parseDmsPair(value)
+    if (parsed) setPin(id, parsed)
   }
 
-  const handleSearch = async () => {
-    if (!regionBounds) {
-      setError('Create a valid region before searching.')
+  const handleGlobeClick = (coords) => {
+    onFirstInteraction()
+
+    if (activeCoordField) {
+      setPin(activeCoordField, coords)
+      setActiveCoordField(null)
       return
     }
 
-    setError('')
-    setIsLoading(true)
-    setShowStats(false)
-
-    const localEstimate = computeLocalEstimate({
-      bounds: regionBounds,
-      solarModelName: solarModel,
-      windModelName: windModel,
-    })
-
-    try {
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          region: {
-            south: regionBounds.south,
-            west: regionBounds.west,
-            north: regionBounds.north,
-            east: regionBounds.east,
-          },
-          solar_model: solarModel,
-          wind_model: windModel,
-        }),
+    if (drawMode === 'circle') {
+      setDrawPoints((current) => {
+        const next = [...current, coords]
+        if (next.length === 2) {
+          const circle = circleFromTwoPoints(next[0], next[1])
+          if (circle) setRegionFeature(polygonFeature(circle, 'circle'))
+          return []
+        }
+        return next
       })
+      return
+    }
 
-      if (!response.ok) {
-        throw new Error(`API status ${response.status}`)
-      }
-
-      const data = await response.json()
-      const normalized = normalizeApiResponse({
-        data,
-        localEstimate,
-        selectedModels: { solar: solarModel, wind: windModel },
-      })
-      setResult(normalized)
-      setShowStats(true)
-    } catch {
-      setResult(localEstimate)
-      setShowStats(true)
-      setError('API unavailable. Showing local estimate based on region size and model assumptions.')
-    } finally {
-      setIsLoading(false)
+    if (drawMode === 'polygon') {
+      setDrawPoints((current) => [...current, coords])
     }
   }
+
+  const finalizePolygon = () => {
+    if (drawPoints.length < 3) return
+    setRegionFeature(polygonFeature(drawPoints, 'polygon'))
+    setDrawPoints([])
+  }
+
+  const clearDrawing = () => {
+    setDrawMode('none')
+    setDrawPoints([])
+    setRegionFeature(null)
+  }
+
+  const toggleEquipment = (value) => {
+    setEquipmentTypes((current) =>
+      current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
+    )
+  }
+
+  const refocusSelection = (duration = 950) => {
+    const center = centerFromBounds(selectionBounds)
+    globeRef.current?.pointOfView({ lat: center.lat, lng: center.lng, altitude: 1.35 }, duration)
+    setCameraLock(false)
+    window.setTimeout(() => setCameraLock(true), duration + 60)
+  }
+
+  const runSearch = () => {
+    setIsSearching(true)
+    setStatsVisible(false)
+    refocusSelection(1000)
+
+    window.setTimeout(() => {
+      const areaApprox = Math.max(
+        1,
+        Math.abs(selectionBounds.north - selectionBounds.south) *
+          Math.abs(selectionBounds.east - selectionBounds.west) *
+          8200,
+      )
+      const result = {
+        category:
+          equipmentTypes.length === 2
+            ? 'hybrid'
+            : equipmentTypes[0] === 'solar'
+              ? 'solar'
+              : 'wind',
+        areaKm2: areaApprox,
+        powerMWhYr: Math.round(areaApprox * (equipmentTypes.length === 2 ? 1300 : 890)),
+        placements: Math.round(areaApprox * (equipmentTypes.includes('solar') ? 115 : 4.2)),
+        rating: ['below average', 'average', 'better than average'][searchCount % 3],
+      }
+      setDummyStats(result)
+      setSearchCount((count) => count + 1)
+      setIsSearching(false)
+      setStatsVisible(true)
+    }, 1250)
+  }
+
+  useEffect(() => {
+    if (!draggingPin) return
+
+    const onMove = (event) => {
+      const coords = globeRef.current?.toGlobeCoords(event.clientX, event.clientY)
+      if (!coords) return
+      setPin(draggingPin, coords)
+    }
+
+    const onUp = () => setDraggingPin(null)
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [draggingPin])
+
+  useEffect(() => {
+    const onKey = () => setLandingVisible(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    if (userMovedCamera || isSearching || statsVisible) return
+    refocusSelection(700)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionBounds.south, selectionBounds.north, selectionBounds.west, selectionBounds.east])
 
   return (
-    <main className="app-shell">
-      <section className="globe-stage">
-        <header className="headline">
-          <p className="eyebrow">Catapult 2026</p>
-          <h1>Renewable Yield Scout</h1>
-          <p>Draw or type a region, pick hardware models, then run a power-density search.</p>
-        </header>
+    <main className="immersive-root" onPointerDown={onFirstInteraction}>
+      <Globe
+        ref={globeRef}
+        width={window.innerWidth}
+        height={window.innerHeight}
+        globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+        bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
+        backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png"
+        polygonsData={[activeFeature]}
+        polygonCapColor={() => 'rgba(118, 245, 200, 0.18)'}
+        polygonSideColor={() => 'rgba(68, 200, 158, 0.25)'}
+        polygonStrokeColor={() => '#7cf5cd'}
+        polygonAltitude={() => 0.012}
+        pointsData={pinPoints}
+        pointLat="lat"
+        pointLng="lng"
+        pointColor="color"
+        pointRadius={0.42}
+        pointAltitude={() => 0.034}
+        pointLabel={(d) => `${d.id.toUpperCase()}<br/>${formatDmsPair({ lat: d.lat, lng: d.lng })}`}
+        onPointClick={(point) => {
+          onFirstInteraction()
+          setDraggingPin(point.id)
+        }}
+        pathsData={drawPaths}
+        pathPoints="points"
+        pathPointLat={(arr) => arr[0]}
+        pathPointLng={(arr) => arr[1]}
+        pathPointAlt={() => 0.015}
+        pathStroke={() => 0.52}
+        pathColor={() => '#ffd07c'}
+        onGlobeClick={handleGlobeClick}
+        onPolygonClick={() => {
+          if (dummyStats) setStatsVisible((v) => !v)
+        }}
+        onZoom={() => {
+          if (!cameraLock) return
+          setUserMovedCamera(true)
+        }}
+      />
 
-        <div className="globe-wrap">
-          <Globe
-            globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-            bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
-            backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png"
-            polygonsData={selectedFeature}
-            polygonCapColor={() => 'rgba(255, 180, 42, 0.42)'}
-            polygonSideColor={() => 'rgba(255, 120, 26, 0.5)'}
-            polygonStrokeColor={() => '#ff8f1f'}
-            polygonAltitude={() => 0.012}
-            pointsData={cornerPoints}
-            pointLat="lat"
-            pointLng="lng"
-            pointAltitude={() => 0.025}
-            pointRadius={0.24}
-            pointColor={() => '#ffe39c'}
-            onGlobeClick={onGlobeClick}
-            onPolygonClick={() => {
-              if (result) {
-                setShowStats((open) => !open)
-              }
-            }}
-          />
+      {landingVisible && (
+        <section className="landing-layer" role="dialog" aria-label="Welcome">
+          <div className="landing-card">
+            <p className="tag">CATAPULT 2026</p>
+            <h1>Clean Energy Mapper</h1>
+            <p>Predictive siting for solar and wind fields on an interactive earth canvas.</p>
+            <small>Click, tap, or press any key to begin.</small>
+          </div>
+        </section>
+      )}
 
-          {isLoading && (
-            <div className="loading-overlay">
-              <div className="loader-card">
-                <p className="loader-title">Running site analysis...</p>
-                <p>
-                  Region: {regionBounds.south.toFixed(3)}, {regionBounds.west.toFixed(3)} to{' '}
-                  {regionBounds.north.toFixed(3)}, {regionBounds.east.toFixed(3)}
-                </p>
+      <section className="overlay-top">
+        <h2>Region Selection</h2>
+        <p>
+          Set two corner coordinates, or draw a circle/polygon. Click a coordinate field then click the globe to pick.
+        </p>
+      </section>
+
+      <section className="overlay-bottom">
+        <div className="coord-row">
+          <label>
+            Position 1
+            <input
+              value={p1Text}
+              onChange={(event) => updateFromText('p1', event.target.value)}
+              onFocus={() => setActiveCoordField('p1')}
+              placeholder={`43°43'25.7"N 80°11'38.5"W`}
+            />
+          </label>
+          <label>
+            Position 2
+            <input
+              value={p2Text}
+              onChange={(event) => updateFromText('p2', event.target.value)}
+              onFocus={() => setActiveCoordField('p2')}
+              placeholder={`43°43'25.7"N 80°11'38.5"W`}
+            />
+          </label>
+        </div>
+
+        <div className="draw-row">
+          <button type="button" className={drawMode === 'circle' ? 'active' : ''} onClick={() => setDrawMode('circle')}>
+            Draw Circle
+          </button>
+          <button type="button" className={drawMode === 'polygon' ? 'active' : ''} onClick={() => setDrawMode('polygon')}>
+            Draw Polygon
+          </button>
+          <button type="button" onClick={finalizePolygon}>
+            Finalize Polygon
+          </button>
+          <button type="button" onClick={clearDrawing}>
+            Clear Drawing
+          </button>
+        </div>
+
+        <div className="equip-row">
+          <span>Equipment Types</span>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={equipmentTypes.includes('solar')}
+              onChange={() => toggleEquipment('solar')}
+            />
+            Solar
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={equipmentTypes.includes('turbine')}
+              onChange={() => toggleEquipment('turbine')}
+            />
+            Turbine
+          </label>
+        </div>
+
+        <div className="model-row">
+          {equipmentTypes.includes('solar') && (
+            <div className="model-card">
+              <p>Solar Model</p>
+              <div className="mode-row">
+                <button
+                  type="button"
+                  className={solarModelMode === 'select' ? 'active' : ''}
+                  onClick={() => setSolarModelMode('select')}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className={solarModelMode === 'type' ? 'active' : ''}
+                  onClick={() => setSolarModelMode('type')}
+                >
+                  Type
+                </button>
               </div>
+              {solarModelMode === 'select' ? (
+                <select value={solarModel} onChange={(event) => setSolarModel(event.target.value)}>
+                  {SOLAR_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input value={solarModel} onChange={(event) => setSolarModel(event.target.value)} />
+              )}
             </div>
           )}
 
-          {result && showStats && !isLoading && (
-            <aside className="stats-popover">
-              <div className="stats-head">
-                <h2>Selection Summary</h2>
-                <button type="button" onClick={() => setShowStats(false)}>
-                  Close
+          {equipmentTypes.includes('turbine') && (
+            <div className="model-card">
+              <p>Turbine Model</p>
+              <div className="mode-row">
+                <button
+                  type="button"
+                  className={windModelMode === 'select' ? 'active' : ''}
+                  onClick={() => setWindModelMode('select')}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className={windModelMode === 'type' ? 'active' : ''}
+                  onClick={() => setWindModelMode('type')}
+                >
+                  Type
                 </button>
               </div>
-              <p className="meta">
-                Recommendation: <strong>{result.recommendation}</strong> • Area:{' '}
-                <strong>{result.areaKm2.toFixed(1)} km²</strong>
-              </p>
-              <div className="stat-grid">
-                <article>
-                  <h3>Solar</h3>
-                  <p>{result.solar.model}</p>
-                  <p>{formatNumber(result.solar.units)} units</p>
-                  <p>{formatNumber(result.solar.powerKwhYr)} kWh/yr</p>
-                  <p className="rating">{result.solar.rating}</p>
-                </article>
-                <article>
-                  <h3>Wind</h3>
-                  <p>{result.wind.model}</p>
-                  <p>{formatNumber(result.wind.units)} units</p>
-                  <p>{formatNumber(result.wind.powerKwhYr)} kWh/yr</p>
-                  <p className="rating">{result.wind.rating}</p>
-                </article>
-              </div>
-              <p className="meta">
-                Data source: <strong>{result.source}</strong>. Click selected region to reopen this card.
-              </p>
-            </aside>
+              {windModelMode === 'select' ? (
+                <select value={windModel} onChange={(event) => setWindModel(event.target.value)}>
+                  {WIND_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input value={windModel} onChange={(event) => setWindModel(event.target.value)} />
+              )}
+            </div>
           )}
         </div>
 
-        <section className="control-dock">
-          <label>
-            Region (lat,lon | lat,lon)
-            <input
-              value={regionInput}
-              onChange={(event) => setRegionInput(event.target.value)}
-              placeholder="33.30,-112.15 | 33.95,-111.70"
-            />
-          </label>
-          <button type="button" onClick={applyTypedRegion}>
-            Apply Region
-          </button>
-          <button
-            type="button"
-            className={drawMode ? 'active' : ''}
-            onClick={() => {
-              setDrawMode((active) => !active)
-              setDrawPoints([])
-            }}
-          >
-            {drawMode
-              ? `Drawing: select corner ${Math.min(drawPoints.length + 1, 2)} of 2`
-              : 'Draw Region On Globe'}
-          </button>
-
-          <label>
-            Solar panel model
-            <select value={solarModel} onChange={(event) => setSolarModel(event.target.value)}>
-              {SOLAR_MODELS.map((model) => (
-                <option key={model.name} value={model.name}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Wind turbine model
-            <select value={windModel} onChange={(event) => setWindModel(event.target.value)}>
-              {WIND_MODELS.map((model) => (
-                <option key={model.name} value={model.name}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            API endpoint
-            <input
-              value={apiEndpoint}
-              onChange={(event) => setApiEndpoint(event.target.value)}
-              placeholder="http://localhost:8000/scout"
-            />
-          </label>
-
-          <button type="button" className="search" onClick={handleSearch}>
+        <div className="action-row">
+          <button type="button" className="search" onClick={runSearch}>
             Search
           </button>
-        </section>
-
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
+          {userMovedCamera && (
+            <button type="button" className="refocus" onClick={() => {
+              setUserMovedCamera(false)
+              refocusSelection(850)
+            }}>
+              Refocus Region
+            </button>
+          )}
+        </div>
       </section>
+
+      {isSearching && (
+        <div className="search-overlay">
+          <div className="search-popup">
+            <p>Zooming to region and calculating dummy stats...</p>
+          </div>
+        </div>
+      )}
+
+      {statsVisible && dummyStats && !isSearching && (
+        <aside className="stats-popup" onClick={() => setStatsVisible(false)}>
+          <h3>Simulation Result</h3>
+          <p>Category: {dummyStats.category}</p>
+          <p>Region Area: {dummyStats.areaKm2.toFixed(1)} km²</p>
+          <p>Total Yield: {dummyStats.powerMWhYr.toLocaleString()} MWh/year</p>
+          <p>Potential Placements: {dummyStats.placements.toLocaleString()}</p>
+          <p>Performance: {dummyStats.rating}</p>
+          <small>Click this panel or selected region to close/open.</small>
+        </aside>
+      )}
     </main>
   )
 }
