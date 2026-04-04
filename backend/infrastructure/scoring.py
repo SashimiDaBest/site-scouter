@@ -12,7 +12,8 @@ from solar_project import SolarProjectInputs, analyze_solar_project
 
 from .common import clamp, pseudo, solar_irradiance_proxy, wind_speed_proxy
 from .grid import nearest_road_distance_m, overlap_building_area_m2
-from .models import BuildingFootprint, RoadFeature
+from .models import BuildingFootprint, ImageryRaster, RoadFeature
+from .segmentation import proxy_landcover, sample_imagery_features
 
 
 def _rect_polygon(
@@ -45,77 +46,35 @@ def _rect_polygon(
 
 
 def _build_visual_solar_layout(
-    cell: dict,
-    usable_ground_area_m2: float,
-    usable_solar_area_m2: float,
+    valid_region_polygons: list[list[Coordinate]],
+    valid_region_areas_m2: list[float],
     packed_usable_area_m2: float,
 ) -> tuple[list[list[Coordinate]], list[list[Coordinate]]]:
-    cell_area_m2 = max(cell["area_m2"], 1.0)
-    rooftop_ratio = clamp(cell["rooftop_area_m2"] / cell_area_m2, 0.0, 0.35)
-    ground_ratio = clamp((0.5 * usable_ground_area_m2) / cell_area_m2, 0.0, 0.85)
-
-    valid_regions: list[list[Coordinate]] = []
-
-    if rooftop_ratio > 0.02:
-        rooftop_height = 0.16
-        rooftop_width = clamp(rooftop_ratio / rooftop_height, 0.18, 0.88)
-        valid_regions.append(
-            _rect_polygon(
-                cell["bbox"],
-                0.06,
-                0.78,
-                0.06 + rooftop_width,
-                0.78 + rooftop_height,
-            )
-        )
-
-    if ground_ratio > 0.03:
-        ground_height = clamp(0.36 + ground_ratio * 0.25, 0.32, 0.74)
-        ground_width = clamp(ground_ratio / max(ground_height, 0.2), 0.18, 0.88)
-        valid_regions.append(
-            _rect_polygon(
-                cell["bbox"],
-                0.08,
-                0.08,
-                0.08 + ground_width,
-                0.08 + ground_height,
-            )
-        )
-
-    if not valid_regions and usable_solar_area_m2 > 0:
-        ratio = clamp(usable_solar_area_m2 / cell_area_m2, 0.05, 0.85)
-        side = clamp(ratio**0.5, 0.24, 0.9)
-        margin_x = (1.0 - side) / 2.0
-        margin_y = (1.0 - side) / 2.0
-        valid_regions.append(
-            _rect_polygon(
-                cell["bbox"],
-                margin_x,
-                margin_y,
-                margin_x + side,
-                margin_y + side,
-            )
-        )
-
     packing_blocks: list[list[Coordinate]] = []
-    packed_ratio = clamp(
-        packed_usable_area_m2 / max(usable_solar_area_m2, 1.0),
-        0.0,
-        1.0,
-    )
-    for region_index, region in enumerate(valid_regions):
+    total_valid_area_m2 = max(sum(valid_region_areas_m2), 1.0)
+    for region_index, region in enumerate(valid_region_polygons):
         region_bbox = BoundingBox(
             min_lat=min(point.lat for point in region),
             min_lon=min(point.lon for point in region),
             max_lat=max(point.lat for point in region),
             max_lon=max(point.lon for point in region),
         )
-        cols = 3 if region_index == 0 else 2
-        rows = 2
+        region_area_ratio = clamp(
+            valid_region_areas_m2[region_index] / total_valid_area_m2,
+            0.0,
+            1.0,
+        )
+        packed_ratio = clamp(
+            packed_usable_area_m2 / total_valid_area_m2,
+            0.0,
+            1.0,
+        )
+        cols = 3 if region_area_ratio > 0.2 else 2
+        rows = 2 if region_area_ratio > 0.12 else 1
         block_margin_x = 0.08
         block_margin_y = 0.12
         usable_width = 1.0 - (block_margin_x * 2)
-        usable_height = max(0.2, packed_ratio * 0.72)
+        usable_height = max(0.16, packed_ratio * clamp(region_area_ratio * 1.8, 0.35, 1.0))
         block_width = usable_width / cols
         block_height = usable_height / rows
         start_y = 0.12
@@ -130,7 +89,155 @@ def _build_visual_solar_layout(
                     _rect_polygon(region_bbox, x0, y0, x1, y1)
                 )
 
-    return valid_regions, packing_blocks
+    return valid_region_polygons, packing_blocks
+
+
+def _subcell_bbox(cell_bbox: BoundingBox, row: int, col: int, grid_size: int) -> BoundingBox:
+    lat_span = cell_bbox.max_lat - cell_bbox.min_lat
+    lon_span = cell_bbox.max_lon - cell_bbox.min_lon
+    min_lat = cell_bbox.min_lat + (lat_span * row / grid_size)
+    max_lat = cell_bbox.min_lat + (lat_span * (row + 1) / grid_size)
+    min_lon = cell_bbox.min_lon + (lon_span * col / grid_size)
+    max_lon = cell_bbox.min_lon + (lon_span * (col + 1) / grid_size)
+    return BoundingBox(
+        min_lat=min_lat,
+        min_lon=min_lon,
+        max_lat=max_lat,
+        max_lon=max_lon,
+    )
+
+
+def _subcell_polygon(sub_bbox: BoundingBox) -> list[Coordinate]:
+    return [
+        Coordinate(lat=sub_bbox.min_lat, lon=sub_bbox.min_lon),
+        Coordinate(lat=sub_bbox.min_lat, lon=sub_bbox.max_lon),
+        Coordinate(lat=sub_bbox.max_lat, lon=sub_bbox.max_lon),
+        Coordinate(lat=sub_bbox.max_lat, lon=sub_bbox.min_lon),
+    ]
+
+
+def _merge_valid_subcells(
+    cell: dict,
+    valid_mask: list[list[bool]],
+    grid_size: int,
+) -> tuple[list[list[Coordinate]], list[float]]:
+    polygons: list[list[Coordinate]] = []
+    areas: list[float] = []
+    subcell_area_m2 = cell["area_m2"] / (grid_size * grid_size)
+    active_runs: dict[tuple[int, int], tuple[int, int]] = {}
+
+    for row in range(grid_size):
+        row_runs: list[tuple[int, int]] = []
+        col = 0
+        while col < grid_size:
+            if not valid_mask[row][col]:
+                col += 1
+                continue
+            start_col = col
+            while col + 1 < grid_size and valid_mask[row][col + 1]:
+                col += 1
+            row_runs.append((start_col, col))
+            col += 1
+
+        next_active_runs: dict[tuple[int, int], tuple[int, int]] = {}
+        for run in row_runs:
+            if run in active_runs:
+                next_active_runs[run] = (active_runs[run][0], row)
+            else:
+                next_active_runs[run] = (row, row)
+
+        for run, (start_row, end_row) in active_runs.items():
+            if run in next_active_runs:
+                continue
+            start_col, end_col = run
+            run_bbox = BoundingBox(
+                min_lat=cell["bbox"].min_lat
+                + (cell["bbox"].max_lat - cell["bbox"].min_lat) * start_row / grid_size,
+                min_lon=cell["bbox"].min_lon
+                + (cell["bbox"].max_lon - cell["bbox"].min_lon) * start_col / grid_size,
+                max_lat=cell["bbox"].min_lat
+                + (cell["bbox"].max_lat - cell["bbox"].min_lat) * (end_row + 1) / grid_size,
+                max_lon=cell["bbox"].min_lon
+                + (cell["bbox"].max_lon - cell["bbox"].min_lon) * (end_col + 1) / grid_size,
+            )
+            polygons.append(_subcell_polygon(run_bbox))
+            areas.append((end_row - start_row + 1) * (end_col - start_col + 1) * subcell_area_m2)
+
+        active_runs = next_active_runs
+
+    for run, (start_row, end_row) in active_runs.items():
+        start_col, end_col = run
+        run_bbox = BoundingBox(
+            min_lat=cell["bbox"].min_lat
+            + (cell["bbox"].max_lat - cell["bbox"].min_lat) * start_row / grid_size,
+            min_lon=cell["bbox"].min_lon
+            + (cell["bbox"].max_lon - cell["bbox"].min_lon) * start_col / grid_size,
+            max_lat=cell["bbox"].min_lat
+            + (cell["bbox"].max_lat - cell["bbox"].min_lat) * (end_row + 1) / grid_size,
+            max_lon=cell["bbox"].min_lon
+            + (cell["bbox"].max_lon - cell["bbox"].min_lon) * (end_col + 1) / grid_size,
+        )
+        polygons.append(_subcell_polygon(run_bbox))
+        areas.append((end_row - start_row + 1) * (end_col - start_col + 1) * subcell_area_m2)
+
+    return polygons, areas
+
+
+def _build_solar_validity_mask(
+    cell: dict,
+    imagery: ImageryRaster | None,
+    buildings: list[BuildingFootprint],
+    roads: list[RoadFeature],
+    grid_size: int = 8,
+) -> tuple[list[list[Coordinate]], list[float], float]:
+    valid_mask = [[False for _ in range(grid_size)] for _ in range(grid_size)]
+    subcell_area_m2 = cell["area_m2"] / (grid_size * grid_size)
+    usable_area_m2 = 0.0
+
+    for row in range(grid_size):
+        for col in range(grid_size):
+            sub_bbox = _subcell_bbox(cell["bbox"], row, col, grid_size)
+            center = Coordinate(
+                lat=(sub_bbox.min_lat + sub_bbox.max_lat) / 2.0,
+                lon=(sub_bbox.min_lon + sub_bbox.max_lon) / 2.0,
+            )
+            feature_seed = {
+                "center_lat": center.lat,
+                "center_lon": center.lon,
+            }
+            landcover = (
+                sample_imagery_features(imagery, sub_bbox) if imagery else None
+            ) or proxy_landcover(feature_seed)
+            building_area_m2 = sum(
+                overlap_building_area_m2(sub_bbox, building) for building in buildings
+            )
+            built_ratio = clamp(building_area_m2 / max(subcell_area_m2, 1.0), 0.0, 1.0)
+            road_distance_m = (
+                nearest_road_distance_m(center, roads) if roads else 9999.0
+            )
+            water_ratio = clamp(landcover.get("water_ratio", 0.0), 0.0, 1.0)
+            shadow_ratio = clamp(landcover.get("shadow_ratio", 0.0), 0.0, 1.0)
+            impervious_ratio = clamp(landcover.get("impervious_ratio", 0.0), 0.0, 1.0)
+            slope_deg = cell["slope_deg"]
+
+            is_valid = (
+                built_ratio < 0.04
+                and road_distance_m >= 30.0
+                and water_ratio < 0.08
+                and shadow_ratio < 0.35
+                and impervious_ratio < 0.58
+                and slope_deg < 9.5
+            )
+            valid_mask[row][col] = is_valid
+            if is_valid:
+                usable_area_m2 += subcell_area_m2
+
+    valid_region_polygons, valid_region_areas_m2 = _merge_valid_subcells(
+        cell,
+        valid_mask,
+        grid_size,
+    )
+    return valid_region_polygons, valid_region_areas_m2, usable_area_m2
 
 
 def enrich_cells(
@@ -230,8 +337,18 @@ def solar_candidate(
     cell: dict,
     idx: int,
     solar_spec: SolarAssetSpec,
+    imagery: ImageryRaster | None,
+    buildings: list[BuildingFootprint],
+    roads: list[RoadFeature],
 ) -> CandidateRegion | None:
-    candidate, _reason = evaluate_solar_candidate(cell, idx, solar_spec)
+    candidate, _reason = evaluate_solar_candidate(
+        cell,
+        idx,
+        solar_spec,
+        imagery,
+        buildings,
+        roads,
+    )
     return candidate
 
 
@@ -239,10 +356,17 @@ def evaluate_solar_candidate(
     cell: dict,
     idx: int,
     solar_spec: SolarAssetSpec,
+    imagery: ImageryRaster | None,
+    buildings: list[BuildingFootprint],
+    roads: list[RoadFeature],
 ) -> tuple[CandidateRegion | None, str | None]:
     irradiance = solar_irradiance_proxy(cell["center_lat"])
-    usable_ground_area = cell["open_land_area_m2"] * clamp(1.0 - cell["water_ratio"], 0.0, 1.0)
-    usable_solar_area = cell["rooftop_area_m2"] + 0.5 * usable_ground_area
+    valid_region_polygons, valid_region_areas_m2, usable_solar_area = _build_solar_validity_mask(
+        cell=cell,
+        imagery=imagery,
+        buildings=buildings,
+        roads=roads,
+    )
     if usable_solar_area < 2_500:
         return None, "low_usable_area"
 
@@ -291,10 +415,9 @@ def evaluate_solar_candidate(
     if score < 48:
         return None, "low_score"
 
-    valid_region_polygons, packing_block_polygons = _build_visual_solar_layout(
-        cell=cell,
-        usable_ground_area_m2=usable_ground_area,
-        usable_solar_area_m2=usable_solar_area,
+    _valid_region_polygons, packing_block_polygons = _build_visual_solar_layout(
+        valid_region_polygons=valid_region_polygons,
+        valid_region_areas_m2=valid_region_areas_m2,
         packed_usable_area_m2=estimate.layout.usable_area_m2,
     )
 
