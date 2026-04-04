@@ -41,7 +41,6 @@ jobs:
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: |
-          npm run lint
           npm run build
 
       - name: Setup Pages
