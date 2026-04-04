@@ -204,7 +204,16 @@ def analyze_infrastructure_polygon(
 
     area_m2, centroid = polygon_area_and_centroid(polygon)
     bbox = bbox_for_points(polygon)
-    cells = build_grid_cells(polygon, bbox, request.cell_size_m)
+    allowed_use_types = set(request.allowed_use_types)
+    effective_cell_size_m = request.cell_size_m
+    cells = build_grid_cells(polygon, bbox, effective_cell_size_m)
+    if allowed_use_types == {"solar"}:
+        while len(cells) < 4 and effective_cell_size_m > 100.0:
+            next_cell_size_m = max(100.0, effective_cell_size_m / 2.0)
+            if next_cell_size_m == effective_cell_size_m:
+                break
+            effective_cell_size_m = next_cell_size_m
+            cells = build_grid_cells(polygon, bbox, effective_cell_size_m)
 
     imagery_raster, imagery_source, imagery_notes = fetch_imagery_raster(
         request.imagery_provider,
@@ -240,7 +249,6 @@ def analyze_infrastructure_polygon(
         "low_panel_count": 0,
         "low_score": 0,
     }
-    allowed_use_types = set(request.allowed_use_types)
     for index, cell in enumerate(cells, start=1):
         if "solar" in allowed_use_types:
             solar, solar_rejection_reason = evaluate_solar_candidate(
@@ -283,6 +291,10 @@ def analyze_infrastructure_polygon(
         *segmentation_notes,
         "Candidate subregions are grid-derived cells clipped to the polygon interior for stable scoring.",
     ]
+    if effective_cell_size_m != request.cell_size_m:
+        notes.append(
+            f"Solar-only siting refined the grid from {request.cell_size_m:.0f} m to {effective_cell_size_m:.0f} m cells for a smaller site footprint."
+        )
     if allowed_use_types == {"solar"}:
         notes.append("Adjacent solar-valid cells were merged into larger siting regions before visualization.")
     if not candidates:
@@ -308,6 +320,7 @@ def analyze_infrastructure_polygon(
     debug_payload = {
         "request": {
             "cell_size_m": request.cell_size_m,
+            "effective_cell_size_m": effective_cell_size_m,
             "imagery_provider": request.imagery_provider,
             "segmentation_backend": request.segmentation_backend,
             "terrain_provider": request.terrain_provider,
