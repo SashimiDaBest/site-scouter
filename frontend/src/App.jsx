@@ -145,13 +145,13 @@ function App() {
   const [activeCoordField, setActiveCoordField] = useState(null);
   const [userMovedMap, setUserMovedMap] = useState(false);
 
-  const [p1, setP1] = useState({ lat: 43.7238, lng: -80.194 });
-  const [p2, setP2] = useState({ lat: 43.6118, lng: -80.0706 });
+  const [p1, setP1] = useState({ lat: 40.446, lng: -86.945 });
+  const [p2, setP2] = useState({ lat: 40.425, lng: -86.865 });
   const [p1Text, setP1Text] = useState(
-    formatDmsPair({ lat: 43.7238, lng: -80.194 }),
+    formatDmsPair({ lat: 40.446, lng: -86.945 }),
   );
   const [p2Text, setP2Text] = useState(
-    formatDmsPair({ lat: 43.6118, lng: -80.0706 }),
+    formatDmsPair({ lat: 40.425, lng: -86.865 }),
   );
   const [p1Error, setP1Error] = useState("");
   const [p2Error, setP2Error] = useState("");
@@ -161,8 +161,8 @@ function App() {
   const [region, setRegion] = useState({
     type: "polygon",
     points: rectangleFromTwoPoints(
-      { lat: 43.7238, lng: -80.194 },
-      { lat: 43.6118, lng: -80.0706 },
+      { lat: 40.446, lng: -86.945 },
+      { lat: 40.425, lng: -86.865 },
     ),
     source: "rectangle",
   });

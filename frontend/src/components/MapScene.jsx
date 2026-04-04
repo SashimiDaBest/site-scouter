@@ -78,9 +78,9 @@ function MapScene({
 
   return (
     <div className="map-layer" aria-hidden={!landingHidden}>
-      <MapContainer
-        className="map-canvas"
-        center={[43.67, -80.13]}
+        <MapContainer
+          className="map-canvas"
+          center={[40.4259, -86.9081]}
         zoom={10}
         zoomControl
         scrollWheelZoom
