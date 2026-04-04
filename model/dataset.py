@@ -56,6 +56,6 @@ def get_data():
     test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False)
 
 
-    return train_loader, test_loader
+    return train_loader, test_loader, len(solar_feature_cols)
 
 process_solar_data()
