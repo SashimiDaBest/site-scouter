@@ -11,8 +11,12 @@ from schemas import (
 from solar_project import SolarProjectInputs, analyze_solar_project
 
 from .common import clamp, pseudo, solar_irradiance_proxy, wind_speed_proxy
-from .grid import nearest_road_distance_m, overlap_building_area_m2
-from .models import BuildingFootprint, ImageryRaster, RoadFeature
+from .grid import (
+    nearest_road_distance_m,
+    overlap_building_area_m2,
+    overlap_water_area_m2,
+)
+from .models import BuildingFootprint, ImageryRaster, RoadFeature, WaterFeature
 from .segmentation import proxy_landcover, sample_imagery_features
 
 
@@ -231,6 +235,7 @@ def _build_solar_validity_mask(
                     nearest_road_distance_m(center, roads) if roads else 9999.0
                 )
                 water_ratio = clamp(landcover.get("water_ratio", 0.0), 0.0, 1.0)
+                water_ratio = max(water_ratio, cell.get("vector_water_ratio", 0.0))
                 shadow_ratio = clamp(landcover.get("shadow_ratio", 0.0), 0.0, 1.0)
                 impervious_ratio = clamp(landcover.get("impervious_ratio", 0.0), 0.0, 1.0)
 
@@ -281,6 +286,7 @@ def enrich_cells(
     imagery_source: str,
     buildings: list[BuildingFootprint],
     roads: list[RoadFeature],
+    waters: list[WaterFeature],
     vector_source: str,
     slopes_by_cell: dict[str, float],
     terrain_source: str,
@@ -324,6 +330,13 @@ def enrich_cells(
 
         vegetation_ratio = clamp(landcover["vegetation_ratio"], 0.0, 1.0)
         water_ratio = clamp(landcover["water_ratio"], 0.0, 0.95)
+        water_area_m2 = (
+            sum(overlap_water_area_m2(cell_bbox, water) for water in waters)
+            if waters
+            else 0.0
+        )
+        vector_water_ratio = clamp(water_area_m2 / max(cell["area_m2"], 1.0), 0.0, 1.0)
+        water_ratio = max(water_ratio, vector_water_ratio)
         shading_factor = clamp(
             max(landcover["shadow_ratio"], vegetation_ratio * 0.35),
             0.0,
@@ -353,6 +366,8 @@ def enrich_cells(
                 "shading_factor": shading_factor,
                 "road_distance_m": road_distance_m,
                 "unobstructed_ratio": unobstructed_ratio,
+                "water_area_m2": water_area_m2,
+                "vector_water_ratio": vector_water_ratio,
                 "vegetation_ratio": vegetation_ratio,
                 "water_ratio": water_ratio,
                 "built_ratio": built_ratio,

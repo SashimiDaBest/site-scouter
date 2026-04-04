@@ -219,7 +219,7 @@ def analyze_infrastructure_polygon(
         request.imagery_provider,
         bbox,
     )
-    buildings, roads, vector_source, vector_notes = fetch_osm_vectors(bbox)
+    buildings, roads, water_features, vector_source, vector_notes = fetch_osm_vectors(bbox)
     slopes_by_cell, terrain_source, terrain_notes = fetch_cell_slopes(
         cells,
         provider=request.terrain_provider,
@@ -237,6 +237,7 @@ def analyze_infrastructure_polygon(
         imagery_source=imagery_source,
         buildings=buildings,
         roads=roads,
+        waters=water_features,
         vector_source=vector_source,
         slopes_by_cell=slopes_by_cell,
         terrain_source=terrain_source,

@@ -14,6 +14,7 @@ from infrastructure_pipeline import (
     BuildingFootprint,
     ImageryRaster,
     RoadFeature,
+    WaterFeature,
     analyze_infrastructure_polygon,
 )
 from infrastructure.scoring import solar_candidate
@@ -170,7 +171,22 @@ class InfrastructurePipelineTests(unittest.TestCase):
                 ),
                 area_m2=building.area_m2,
             )
-            return [live_building], [road], "osm-overpass", ["mock vectors"]
+            water_feature = WaterFeature(
+                polygon=[
+                    Coordinate(lat=33.0, lon=-112.0),
+                    Coordinate(lat=33.0, lon=-111.99),
+                    Coordinate(lat=33.01, lon=-111.99),
+                    Coordinate(lat=33.01, lon=-112.0),
+                ],
+                bbox=bbox.__class__(
+                    min_lat=33.0,
+                    min_lon=-112.0,
+                    max_lat=33.01,
+                    max_lon=-111.99,
+                ),
+                area_m2=1000.0,
+            )
+            return [live_building], [road], [water_feature], "osm-overpass", ["mock vectors"]
 
         with patch("infrastructure.pipeline.fetch_imagery_raster", side_effect=fake_imagery_fetch), patch(
             "infrastructure.pipeline.fetch_osm_vectors",
