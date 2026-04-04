@@ -14,6 +14,8 @@ ERA5_FLAT_CSV_PATH = DATA_DIR / "era5_monthly_us_1991_2020_flat.csv"
 ERA5_SELECTED_CSV_PATH = DATA_DIR / "era5_monthly_us_1991_2020_selected.csv"
 ERA5_LOOKUP_PATH = DATA_DIR / "era5_climate_lookup.csv"
 ERA5_LOOKUP_CLEAN_PATH = DATA_DIR / "era5_climate_lookup_clean.csv"
+ERA5_SOLAR_LOOKUP_PATH = DATA_DIR / "era5_solar_climate_lookup.csv"
+ERA5_SOLAR_LOOKUP_CLEAN_PATH = DATA_DIR / "era5_solar_climate_lookup_clean.csv"
 SOLAR_WITH_ERA5_PATH = DATA_DIR / "solar_with_era5_climate.csv"
 SOLAR_SOURCE_PATH = DATA_DIR / "solar.csv"
 WIND_WITH_ERA5_PATH = DATA_DIR / "wind_with_era5_climate.csv"
@@ -52,6 +54,61 @@ ERA5_DEFAULT_EXPORT_COLUMNS = [
     "windspeed_m_s",
 ]
 
+ERA5_DOWNLOAD_VARIABLES = [
+    "2m_temperature",
+    "2m_dewpoint_temperature",
+    "total_precipitation",
+    "snowfall",
+    "total_cloud_cover",
+    "10m_u_component_of_wind",
+    "10m_v_component_of_wind",
+    # Minimal solar subset to stay within CDS limits while preserving the most useful irradiance signal.
+    "surface_solar_radiation_downwards",
+    "surface_solar_radiation_downward_clear_sky",
+    "total_sky_direct_solar_radiation_at_surface",
+    "toa_incident_solar_radiation",
+]
+
+SOLAR_ERA5_EXTRA_FEATURES = [
+    "surface_solar_radiation_downwards",
+    "surface_solar_radiation_downward_clear_sky",
+    "total_sky_direct_solar_radiation_at_surface",
+    "toa_incident_solar_radiation",
+]
+
+ERA5_EXTRA_VAR_CANDIDATES = {
+    "clear_sky_direct_solar_radiation_at_surface": ["clear_sky_direct_solar_radiation_at_surface", "cdir"],
+    "downward_uv_radiation_at_the_surface": ["downward_uv_radiation_at_the_surface", "uvb"],
+    "forecast_logarithm_of_surface_roughness_for_heat": [
+        "forecast_logarithm_of_surface_roughness_for_heat",
+        "flsr",
+    ],
+    "instantaneous_surface_sensible_heat_flux": ["instantaneous_surface_sensible_heat_flux", "ishf"],
+    "near_ir_albedo_for_diffuse_radiation": ["near_ir_albedo_for_diffuse_radiation", "alnid"],
+    "near_ir_albedo_for_direct_radiation": ["near_ir_albedo_for_direct_radiation", "alnip"],
+    "surface_latent_heat_flux": ["surface_latent_heat_flux", "slhf"],
+    "surface_net_solar_radiation": ["surface_net_solar_radiation", "ssr"],
+    "surface_net_solar_radiation_clear_sky": ["surface_net_solar_radiation_clear_sky", "ssrc"],
+    "surface_net_thermal_radiation": ["surface_net_thermal_radiation", "str"],
+    "surface_net_thermal_radiation_clear_sky": ["surface_net_thermal_radiation_clear_sky", "strc"],
+    "surface_sensible_heat_flux": ["surface_sensible_heat_flux", "sshf"],
+    "surface_solar_radiation_downward_clear_sky": ["surface_solar_radiation_downward_clear_sky", "ssrdc"],
+    "surface_solar_radiation_downwards": ["surface_solar_radiation_downwards", "ssrd"],
+    "surface_thermal_radiation_downward_clear_sky": [
+        "surface_thermal_radiation_downward_clear_sky",
+        "strdc",
+    ],
+    "surface_thermal_radiation_downwards": ["surface_thermal_radiation_downwards", "strd"],
+    "toa_incident_solar_radiation": ["toa_incident_solar_radiation", "tisr"],
+    "top_net_solar_radiation": ["top_net_solar_radiation", "tsr"],
+    "top_net_solar_radiation_clear_sky": ["top_net_solar_radiation_clear_sky", "tsrc"],
+    "top_net_thermal_radiation": ["top_net_thermal_radiation", "ttr"],
+    "top_net_thermal_radiation_clear_sky": ["top_net_thermal_radiation_clear_sky", "ttrc"],
+    "total_sky_direct_solar_radiation_at_surface": ["total_sky_direct_solar_radiation_at_surface", "fdir"],
+    "uv_visible_albedo_for_diffuse_radiation": ["uv_visible_albedo_for_diffuse_radiation", "aluvd"],
+    "uv_visible_albedo_for_direct_radiation": ["uv_visible_albedo_for_direct_radiation", "aluvp"],
+}
+
 
 def download_era5_monthly_means(
     output_path: Path = ERA5_RAW_PATH,
@@ -70,15 +127,7 @@ def download_era5_monthly_means(
     client = cdsapi.Client()
     request = {
         "product_type": ["monthly_averaged_reanalysis"],
-        "variable": [
-            "2m_temperature",
-            "2m_dewpoint_temperature",
-            "total_precipitation",
-            "snowfall",
-            "total_cloud_cover",
-            "10m_u_component_of_wind",
-            "10m_v_component_of_wind",
-        ],
+        "variable": ERA5_DOWNLOAD_VARIABLES,
         "year": years,
         "month": MONTHS,
         "time": ["00:00"],
@@ -196,7 +245,12 @@ def _haversine_distance_km(
     return earth_radius_km * c
 
 
-def _build_climate_row(cell_df: pd.DataFrame, era5_lat: float, era5_lon: float) -> dict:
+def _build_climate_row(
+    cell_df: pd.DataFrame,
+    era5_lat: float,
+    era5_lon: float,
+    extra_feature_names: list[str] | None = None,
+) -> dict:
     transformed = _transform_era5_frame(cell_df)
 
     monthly_means = transformed.groupby("month", as_index=False).mean(numeric_only=True)
@@ -217,6 +271,9 @@ def _build_climate_row(cell_df: pd.DataFrame, era5_lat: float, era5_lon: float) 
                 month_sum_slice = monthly_sums.loc[monthly_sums["month"] == month, feature_name]
                 row[f"climate_m{month:02d}_total_{feature_name}"] = round(float(month_sum_slice.iloc[0]), 4)
 
+    for feature_name in extra_feature_names or []:
+        row[feature_name] = round(monthly_means[feature_name].mean(), 4)
+
     return row
 
 
@@ -236,7 +293,12 @@ def _resolve_wind_vars(dataset) -> tuple[str | None, str | None, str | None]:
     return windspeed_var, wind_u_var, wind_v_var
 
 
-def _prepare_era5_cell_frame(dataset, lat_idx: int, lon_idx: int) -> pd.DataFrame:
+def _prepare_era5_cell_frame(
+    dataset,
+    lat_idx: int,
+    lon_idx: int,
+    extra_feature_names: list[str] | None = None,
+) -> pd.DataFrame:
     temp_var = _pick_var_name(dataset, ["t2m", "2m_temperature"])
     dew_var = _pick_var_name(dataset, ["d2m", "2m_dewpoint_temperature"])
     precip_var = _pick_var_name(dataset, ["tp", "total_precipitation"])
@@ -253,6 +315,12 @@ def _prepare_era5_cell_frame(dataset, lat_idx: int, lon_idx: int) -> pd.DataFram
         )
 
     selected_vars = [temp_var, dew_var, precip_var, snow_var, cloud_var]
+    extra_var_name_map: dict[str, str] = {}
+    for feature_name in extra_feature_names or []:
+        resolved_var = _pick_var_name(dataset, ERA5_EXTRA_VAR_CANDIDATES[feature_name])
+        selected_vars.append(resolved_var)
+        extra_var_name_map[resolved_var] = feature_name
+
     if windspeed_var is not None:
         selected_vars.append(windspeed_var)
     else:
@@ -276,6 +344,8 @@ def _prepare_era5_cell_frame(dataset, lat_idx: int, lon_idx: int) -> pd.DataFram
         cell_frame = cell_frame.rename(columns={windspeed_var: "windspeed_m_s"})
     else:
         cell_frame = cell_frame.rename(columns={wind_u_var: "wind_u_m_s", wind_v_var: "wind_v_m_s"})
+    if extra_var_name_map:
+        cell_frame = cell_frame.rename(columns=extra_var_name_map)
     return cell_frame
 
 
@@ -347,6 +417,7 @@ def select_era5_columns(
 def build_era5_climate_lookup(
     era5_path: Path = ERA5_RAW_PATH,
     output_path: Path = ERA5_LOOKUP_PATH,
+    extra_feature_names: list[str] | None = None,
 ) -> pd.DataFrame:
     try:
         import xarray as xr
@@ -355,39 +426,36 @@ def build_era5_climate_lookup(
             "Missing dependency 'xarray'. Install model/requirements-era5.txt before building the ERA5 lookup."
         ) from exc
 
-    solar_df = pd.read_csv(SOLAR_SOURCE_PATH, encoding="utf-8-sig")
-    solar_df["ylat"] = solar_df["ylat"].astype(float)
-    solar_df["xlong"] = solar_df["xlong"].astype(float)
-
     dataset = open_era5_dataset(era5_path)
 
     latitudes = np.asarray(dataset["latitude"].values, dtype=float)
     longitudes = np.asarray(dataset["longitude"].values, dtype=float)
-
-    normalized_lons = _normalize_site_longitudes(solar_df["xlong"].to_numpy(), longitudes)
-    solar_df["era5_lat_idx"] = _nearest_indices(latitudes, solar_df["ylat"].to_numpy())
-    solar_df["era5_lon_idx"] = _nearest_indices(longitudes, normalized_lons)
-
-    unique_cells = solar_df[["era5_lat_idx", "era5_lon_idx"]].drop_duplicates().reset_index(drop=True)
-    print(f"solar_rows={len(solar_df)} unique_era5_cells={len(unique_cells)}")
+    total_cells = len(latitudes) * len(longitudes)
+    print(f"era5_grid_cells={total_cells}")
 
     lookup_rows: list[dict] = []
-    for index, cell in unique_cells.iterrows():
-        lat_idx = int(cell["era5_lat_idx"])
-        lon_idx = int(cell["era5_lon_idx"])
-        cell_frame = _prepare_era5_cell_frame(dataset, lat_idx=lat_idx, lon_idx=lon_idx)
+    for lat_idx, era5_lat in enumerate(latitudes):
+        for lon_idx, era5_lon in enumerate(longitudes):
+            cell_frame = _prepare_era5_cell_frame(
+                dataset,
+                lat_idx=lat_idx,
+                lon_idx=lon_idx,
+                extra_feature_names=extra_feature_names,
+            )
 
-        lookup_row = _build_climate_row(
-            cell_frame,
-            era5_lat=float(latitudes[lat_idx]),
-            era5_lon=float(longitudes[lon_idx]),
-        )
-        lookup_row["era5_lat_idx"] = lat_idx
-        lookup_row["era5_lon_idx"] = lon_idx
-        lookup_rows.append(lookup_row)
+            lookup_row = _build_climate_row(
+                cell_frame,
+                era5_lat=float(era5_lat),
+                era5_lon=float(era5_lon),
+                extra_feature_names=extra_feature_names,
+            )
+            lookup_row["era5_lat_idx"] = lat_idx
+            lookup_row["era5_lon_idx"] = lon_idx
+            lookup_rows.append(lookup_row)
 
-        if (index + 1) % 100 == 0 or index + 1 == len(unique_cells):
-            print(f"processed_era5_cells={index + 1}/{len(unique_cells)}")
+            processed_cells = len(lookup_rows)
+            if processed_cells % 100 == 0 or processed_cells == total_cells:
+                print(f"processed_era5_cells={processed_cells}/{total_cells}")
 
     lookup_df = pd.DataFrame(lookup_rows)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -399,6 +467,7 @@ def build_era5_climate_lookup(
 def clean_era5_climate_lookup(
     lookup_csv_path: Path = ERA5_LOOKUP_PATH,
     output_path: Path = ERA5_LOOKUP_CLEAN_PATH,
+    extra_feature_names: list[str] | None = None,
 ) -> pd.DataFrame:
     lookup_df = pd.read_csv(lookup_csv_path)
 
@@ -412,6 +481,7 @@ def clean_era5_climate_lookup(
             if feature_name in ERA5_SUM_AGGREGATE_FEATURES:
                 ordered_columns.append(f"climate_m{month:02d}_total_{feature_name}")
 
+    ordered_columns.extend(extra_feature_names or [])
     ordered_columns.extend(["era5_lat_idx", "era5_lon_idx"])
 
     missing_columns = [column for column in ordered_columns if column not in lookup_df.columns]
@@ -527,7 +597,7 @@ def _build_site_with_era5_dataset(
 def build_solar_with_era5_dataset(
     solar_csv_path: Path = SOLAR_SOURCE_PATH,
     era5_path: Path = ERA5_RAW_PATH,
-    lookup_csv_path: Path = ERA5_LOOKUP_PATH,
+    lookup_csv_path: Path = ERA5_SOLAR_LOOKUP_CLEAN_PATH,
     output_path: Path = SOLAR_WITH_ERA5_PATH,
 ) -> pd.DataFrame:
     return _build_site_with_era5_dataset(
@@ -540,55 +610,39 @@ def build_solar_with_era5_dataset(
     )
 
 
+def build_solar_era5_climate_lookup(
+    era5_path: Path = ERA5_RAW_PATH,
+    output_path: Path = ERA5_SOLAR_LOOKUP_PATH,
+) -> pd.DataFrame:
+    return build_era5_climate_lookup(
+        era5_path=era5_path,
+        output_path=output_path,
+        extra_feature_names=SOLAR_ERA5_EXTRA_FEATURES,
+    )
+
+
+def clean_solar_era5_climate_lookup(
+    lookup_csv_path: Path = ERA5_SOLAR_LOOKUP_PATH,
+    output_path: Path = ERA5_SOLAR_LOOKUP_CLEAN_PATH,
+) -> pd.DataFrame:
+    return clean_era5_climate_lookup(
+        lookup_csv_path=lookup_csv_path,
+        output_path=output_path,
+        extra_feature_names=SOLAR_ERA5_EXTRA_FEATURES,
+    )
+
+
 def build_wind_with_era5_dataset(
     wind_csv_path: Path = WIND_SOURCE_PATH,
-    lookup_csv_path: Path = ERA5_LOOKUP_PATH,
+    era5_path: Path = ERA5_RAW_PATH,
+    lookup_csv_path: Path = ERA5_LOOKUP_CLEAN_PATH,
     output_path: Path = WIND_WITH_ERA5_PATH,
 ) -> pd.DataFrame:
-    wind_df = pd.read_csv(wind_csv_path, encoding="utf-8-sig")
-    wind_df["ylat"] = wind_df["ylat"].astype(float)
-    wind_df["xlong"] = wind_df["xlong"].astype(float)
-    wind_df["t_img_date"] = pd.to_datetime(wind_df["t_img_date"].astype(str), format="%m/%d/%Y", errors="coerce")
-
-    lookup_df = pd.read_csv(lookup_csv_path)
-    nearest_lookup_indices = _nearest_lookup_row_indices(
-        site_lats=wind_df["ylat"].to_numpy(),
-        site_lons=wind_df["xlong"].to_numpy(),
-        lookup_lats=lookup_df["era5_latitude"].to_numpy(),
-        lookup_lons=lookup_df["era5_longitude"].to_numpy(),
+    return _build_site_with_era5_dataset(
+        source_csv_path=wind_csv_path,
+        era5_path=era5_path,
+        lookup_csv_path=lookup_csv_path,
+        output_path=output_path,
+        date_column="t_img_date",
+        date_format="%m/%d/%Y",
     )
-    matched_lookup_df = lookup_df.iloc[nearest_lookup_indices].reset_index(drop=True)
-    merged_df = pd.concat([wind_df.reset_index(drop=True), matched_lookup_df], axis=1)
-    merged_df["era5_distance_km"] = _haversine_distance_km(
-        merged_df["ylat"],
-        merged_df["xlong"],
-        merged_df["era5_latitude"],
-        merged_df["era5_longitude"],
-    ).round(4)
-    merged_df["install_month"] = merged_df["t_img_date"].dt.month.fillna(0).astype(int)
-    merged_df["install_month_sin"] = 0.0
-    merged_df["install_month_cos"] = 0.0
-
-    for month in range(1, 13):
-        mask = merged_df["install_month"] == month
-        month_sin, month_cos = _month_to_cyclic_features(month)
-        merged_df.loc[mask, "install_month_sin"] = month_sin
-        merged_df.loc[mask, "install_month_cos"] = month_cos
-
-    valid_months = merged_df["install_month"].between(1, 12)
-    for feature_name in ERA5_CLIMATE_FEATURES:
-        monthly_values = pd.Series(np.nan, index=merged_df.index, dtype=float)
-        for month in range(1, 13):
-            monthly_column = f"climate_m{month:02d}_{feature_name}"
-            monthly_values.loc[merged_df["install_month"] == month] = merged_df.loc[
-                merged_df["install_month"] == month, monthly_column
-            ]
-
-        annual_column = f"climate_annual_{feature_name}"
-        monthly_values.loc[~valid_months] = merged_df.loc[~valid_months, annual_column]
-        merged_df[f"climate_install_month_{feature_name}"] = monthly_values
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    merged_df.to_csv(output_path, index=False)
-    print(f"saved_merged_dataset={output_path}")
-    return merged_df
