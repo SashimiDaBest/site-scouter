@@ -3,21 +3,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+from torchmetrics import R2Score
 import dataset
 
-train_loader, test_loader, ds_size = dataset.get_data()
-batch_size = dataset.get_data("batch_size")
-
-for inputs, labels in train_loader:
-    print("Inputs shape:", inputs.shape)
-    print("Inputs dtype:", inputs.dtype)
-    print("First 5 inputs:\n", inputs[:5])
-    
-    print("Labels shape:", labels.shape)
-    print("Labels dtype:", labels.dtype)
-    print("First 5 labels:\n", labels[:5])
-    break  # Only look at the first batch
-
+batch_size = 32
+train_loader, test_loader, ds_size = dataset.get_data(batch_size=32)
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,46 +28,47 @@ class Habakkuk(nn.Module):
         x = self.fc4(x)
         return x
 
-def train_one_epoch(epoch_index, tb_writer, model, optimizer, loss_fn):
+def train_one_epoch(model, optimizer, loss_fn):
     running_loss = 0.
-    last_loss = 0.
+    total_batches = 0
 
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-
-    i = 0
-    for inputs, labels in train_loader:
-
-        inputs = inputs.float()
-        labels = labels.float()
-        # Every data instance is an input + label pair
-
-        print(inputs)
-
-        # Zero your gradients for every batch!
+    for i, (inputs, labels) in enumerate(train_loader):
         optimizer.zero_grad()
-
-        # Make predictions for this batch
         outputs = model(inputs)
-
-        # Compute the loss and its gradients
         loss = loss_fn(outputs, labels)
         loss.backward()
-
-        # Adjust learning weights
         optimizer.step()
 
-        # Gather data and report
         running_loss += loss.item()
-        if i % batch_size == batch_size - 1:
-            last_loss = running_loss / batch_size # loss per batch
-            print('  batch {} loss: {}'.format(i + 1, last_loss))
-            tb_x = epoch_index * len(train_loader) + i + 1
-            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
-            running_loss = 0.
-        i+=1
-    return last_loss
+        total_batches += 1
+
+    avg_loss = running_loss / total_batches
+    return avg_loss
+
+def test_loop(model):
+    
+    model.eval()
+    loss_fn = nn.MSELoss()
+    r2_metric = R2Score()
+    
+    running_loss = 0.0
+    
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            outputs = model(inputs)
+            
+            loss = loss_fn(outputs, labels)
+            running_loss += loss.item()
+
+            r2_metric.update(outputs, labels)
+    
+    avg_loss = running_loss / len(test_loader)
+    r2_score = r2_metric.compute().item()
+    
+    print(f"Test MSE Loss: {avg_loss:.6f}")
+    print(f"Test R² Score: {r2_score:.6f}")
+    
+    return avg_loss, r2_score
 
 def train_loop():
 
@@ -95,46 +86,14 @@ def train_loop():
 
     EPOCHS = 10
 
-    best_vloss = 1_000_000.
-
     print("started!")
 
     for epoch in range(0, EPOCHS):
-
-        print('EPOCH {}:'.format(epoch_number + 1))
-
-        # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss = train_one_epoch(epoch, writer, model, optimizer, loss_fn)
-
-
-        running_vloss = 0.0
-        # Set the model to evaluation mode, disabling dropout and using population
-        # statistics for batch normalization.
-        model.eval()
-
-        # Disable gradient computation and reduce memory consumption.
-        with torch.no_grad():
-            for i, vdata in enumerate(test_loader):
-                vinputs, vlabels = vdata
-                voutputs = model(vinputs)
-                vloss = loss_fn(voutputs, vlabels)
-                running_vloss += vloss
-
-        avg_vloss = running_vloss / (i + 1)
-        print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-
-        # Log the running loss averaged per batch
-        # for both training and validation
-        
-        # Track best performance, and save the model's state
-        # if avg_vloss < best_vloss:
-        #     best_vloss = avg_vloss
-        #     model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-        #     torch.save(model.state_dict(), model_path)
-
-        epoch_number += 1
+        avg_loss = train_one_epoch(model, optimizer, loss_fn)
+        print(f'EPOCH {epoch + 1}, LOSS: {avg_loss}')
 
     return model
     
-train_loop()
+model = train_loop()
+test_loop(model)
