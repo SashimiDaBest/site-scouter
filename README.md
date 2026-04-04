@@ -3,11 +3,9 @@ https://energy.usgs.gov/uspvdb/data/
 
 
 windpower
-
 solarpower
-
-
 hydropower
+
 - equipment
 - dimension/placement constraint
 - how much power output based on resource input
