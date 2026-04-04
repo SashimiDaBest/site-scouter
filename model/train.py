@@ -6,10 +6,10 @@ from torchmetrics import R2Score
 from dataset import SOLAR_MODEL_FEATURES, WIND_MODEL_FEATURES, get_data
 
 
-torch.manual_seed(17)
+torch.manual_seed(67)
 batch_size = 32
-# train_loader, test_loader, ds_size = get_data("data/processed/solar.csv", SOLAR_MODEL_FEATURES, batch_size=32)
-train_loader, test_loader, ds_size = get_data("data/processed/wind.csv", WIND_MODEL_FEATURES, batch_size=32)
+# train_loader, test_loader, ds_size = get_solar("data/processed/solar.csv", SOLAR_MODEL_FEATURES, batch_size=32)
+train_loader, test_loader, ds_size = get_wind("data/processed/wind.csv", WIND_MODEL_FEATURES, batch_size=32)
 
 # PyTorch models inherit from torch.nn.Module
 class Habakkuk(nn.Module):
