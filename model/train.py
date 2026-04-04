@@ -6,6 +6,7 @@ from datetime import datetime
 import dataset
 
 train_loader, test_loader, ds_size = dataset.get_data()
+batch_size = dataset.get_data("batch_size")
 
 for inputs, labels in train_loader:
     print("Inputs shape:", inputs.shape)
@@ -67,6 +68,15 @@ def train_one_epoch(epoch_index, tb_writer, model, optimizer, loss_fn):
         # Adjust learning weights
         optimizer.step()
 
+        # Gather data and report
+        running_loss += loss.item()
+        if i % batch_size == batch_size - 1:
+            last_loss = running_loss / batch_size # loss per batch
+            print('  batch {} loss: {}'.format(i + 1, last_loss))
+            tb_x = epoch_index * len(train_loader) + i + 1
+            tb_writer.add_scalar('Loss/train', last_loss, tb_x)
+            running_loss = 0.
+        i+=1
     return last_loss
 
 def train_loop():
