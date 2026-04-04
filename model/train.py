@@ -87,3 +87,4 @@ def train_loop():
     
 model = train_loop()
 test_loop(model)
+torch.save(model, "model/habakkuk/model.dat")
