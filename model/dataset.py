@@ -15,8 +15,9 @@ class RenewableDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx], self.targets[idx]
 
-CLIMATE_FEATURES = ["climate_annual_temperature_c", "climate_annual_relative_humidity_pct", "climate_annual_total_precipitation_mm", "climate_total_total_precipitation_mm", "climate_annual_snowfall_mm", "climate_total_snowfall_mm", "climate_annual_cloud_cover_pct", "era5_distance_km", ""]
+CLIMATE_FEATURES = ["climate_annual_temperature_c", "climate_annual_relative_humidity_pct", "climate_annual_total_precipitation_mm", "climate_total_total_precipitation_mm", "climate_annual_snowfall_mm", "climate_total_snowfall_mm", "climate_annual_cloud_cover_pct", "era5_distance_km"]
 DATA_FEATURES = ["p_area", "p_tilt", "p_azimuth"]
+OUTPUT_FEATURES = ["avg_annual_generation"]
 ORIG_SOLAR_COLS =  DATA_FEATURES + ["ylat", "xlong", "p_img_date", "eia_id"]
 
 def process_solar_data():
@@ -32,10 +33,11 @@ def process_solar_data():
     avg_generation_df = pd.read_csv("data/avg_eia_solar_gen.csv") # Maybe in future change to live solar
 
     raw_solar_era5_df = raw_solar_era5_df.merge(avg_generation_df, left_on="eia_id", right_on="plantCode", how="left")
+    print(raw_solar_era5_df)
 
-    #Final DF
-    final_df = raw_solar_era5_df[DATA_FEATURES + CLIMATE_FEATURES]
-    final_df.to_csv("data/avg_eia_solar_gen.csv", index=False)
+    #Final DF - Input + Output features
+    final_df = raw_solar_era5_df[DATA_FEATURES + CLIMATE_FEATURES + OUTPUT_FEATURES]
+    final_df.to_csv("data/processed/solar.csv", index=False)
 
 def get_data():
     df = pd.read_csv("data/processed/solar.csv")
@@ -55,3 +57,5 @@ def get_data():
 
 
     return train_loader, test_loader
+
+process_solar_data()
