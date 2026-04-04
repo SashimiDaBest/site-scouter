@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import random_split
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
-import model.utils as utils
+import utils
 
 class RenewableDataset(Dataset):
     def __init__(self, df, feature_cols, target_col):

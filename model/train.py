@@ -4,8 +4,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 
-import model.dataset as dataset
-import model.utils as utils
+import dataset
 
 train_loader, test_loader = dataset.get_data()
 
@@ -119,3 +118,6 @@ def train_loop():
         epoch_number += 1
 
         return model
+    
+
+train_loop()
