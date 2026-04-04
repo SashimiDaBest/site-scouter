@@ -15,8 +15,8 @@ train_loader, test_loader, ds_size = get_wind_data("data/processed/wind.csv", WI
 class Habakkuk(nn.Module):
     def __init__(self, input_size):
         super(Habakkuk, self).__init__()
-        self.fc1 = nn.Linear(input_size, 480)
-        self.fc2 = nn.Linear(480, 100)
+        self.fc1 = nn.Linear(input_size, 5000)
+        self.fc2 = nn.Linear(5000, 100)
         self.fc3 = nn.Linear(100, 24)
         self.fc4 = nn.Linear(24, 6)
         self.fc5 = nn.Linear(6, 1)
