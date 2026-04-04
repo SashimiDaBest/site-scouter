@@ -66,7 +66,7 @@ def get_data(path, feature_cols, label_col="avg_annual_generation", batch_size=3
     df[label_col] = np.log1p(df[label_col]) #TODO log transform labels for now, undo LATER
     df[feature_cols] = df[feature_cols].astype(float)
 
-    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+    df = df.sample(frac=1).reset_index(drop=True)
 
     train_size = int(train_frac * len(df))
 

@@ -29,7 +29,7 @@ class Habakkuk(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        x = self.dropout(x)
+        #x = self.dropout(x)
         x = F.relu(self.fc4(x))
         x = self.fc5(x)
         return x
