@@ -8,7 +8,7 @@ from scipy.spatial.distance import pdist
 import numpy as np
 import pandas as pd
 
-SOLAR_CLIMATE_FEATURES = ["climate_annual_temperature_c", "climate_annual_relative_humidity_pct", "climate_annual_total_precipitation_mm", "climate_total_total_precipitation_mm", "climate_annual_snowfall_mm", "climate_total_snowfall_mm", "climate_annual_cloud_cover_pct", "era5_distance_km"]
+SOLAR_CLIMATE_FEATURES = ["climate_annual_temperature_c", "climate_annual_relative_humidity_pct", "climate_annual_total_precipitation_mm", "climate_total_total_precipitation_mm", "climate_annual_snowfall_mm", "climate_total_snowfall_mm", "climate_annual_cloud_cover_pct", "era5_distance_km", "surface_solar_radiation_downwards", "surface_solar_radiation_downward_clear_sky", "total_sky_direct_solar_radiation_at_surface", "toa_incident_solar_radiation"]
 SOLAR_DATA_FEATURES = ["p_area", "p_tilt", "p_azimuth"]
 SOLAR_OUTPUT_FEATURES = ["avg_annual_generation"]
 SOLAR_MODEL_FEATURES = SOLAR_DATA_FEATURES + SOLAR_CLIMATE_FEATURES

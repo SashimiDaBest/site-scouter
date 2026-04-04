@@ -21,6 +21,7 @@ except ImportError:
 
 OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 MINIMUM_USEFUL_PANEL_COUNT = 12
+DEFAULT_COST_STATE = "CA"
 
 
 def clamp(value: float, min_value: float, max_value: float) -> float:
@@ -99,7 +100,7 @@ def _calculate_costs_with_cost_module(
     packing_efficiency: float,
     performance_ratio: float,
     sunlight_intensity_kwh_m2_yr: float,
-    state: str = "CA"  # Default to California if not specified
+    state: str = DEFAULT_COST_STATE,
 ) -> tuple[float, float, float]:
     """
     Calculate costs using the cost.py module.
@@ -135,13 +136,10 @@ def _calculate_costs_with_cost_module(
         )
 
         # Extract costs from the result
-        system_size = cost_result["layer_1_system_size"]
         incentives = cost_result["layer_4_incentives"]
 
-        # The cost module doesn't separate panel vs construction cost directly
-        # We'll estimate based on the system size
-        panel_count = system_size["n_panels"]
-
+        # The cost module produces a project-level cost, not an equipment/install split.
+        # Keep the existing API shape by allocating the pipeline-derived total.
         # For now, use a simple allocation: assume panels are 40% of total cost
         # This is a rough estimate - in reality it varies by project
         total_cost = incentives["net_cost_usd"]
@@ -195,13 +193,14 @@ def analyze_solar_polygon(request: SolarAnalysisRequest) -> SolarAnalysisRespons
         model_source = "physics-fallback"
 
     # --- Cost ---
-    # Try to use the cost module if state is provided and module is available
-    use_cost_module = COST_MODULE_AVAILABLE and request.state is not None
+    # Use the cost pipeline whenever it is available. If the request does not
+    # include a state, fall back to a deterministic default so frontend callers
+    # still receive pipeline-based costs.
+    use_cost_module = COST_MODULE_AVAILABLE
 
     if use_cost_module:
         try:
-            # request.state is not None here due to the check above
-            state_str = request.state  # type: ignore
+            state_str = request.state or DEFAULT_COST_STATE
             panel_cost_usd, construction_cost_usd, total_project_cost_usd = _calculate_costs_with_cost_module(
                 area_m2=area_m2,
                 panel_area_m2=request.panel_area_m2,
