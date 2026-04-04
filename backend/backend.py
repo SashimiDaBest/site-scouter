@@ -1,20 +1,30 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+from schemas import SolarAnalysisRequest, SolarAnalysisResponse
+from solar_analysis import analyze_solar_polygon
 
-class Item(BaseModel):
-    name: str
-    price: float
+
+app = FastAPI(title="Renewables Solar Analysis API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/")
-def root():
-    return {"message": "Hello, World!"}
+def root() -> dict[str, str]:
+    return {"message": "Renewables Solar Analysis API is running."}
 
-@app.get("/items/{item_id}")
-def get_item(item_id: int):
-    return {"item_id": item_id, "name": "Sample Item"}
 
-@app.post("/items")
-def create_item(item: Item):
-    return {"message": "Item created", "item": item}
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/solar/analyze", response_model=SolarAnalysisResponse)
+def solar_analyze(request: SolarAnalysisRequest) -> SolarAnalysisResponse:
+    return analyze_solar_polygon(request)

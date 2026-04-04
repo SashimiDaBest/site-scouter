@@ -18,6 +18,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
+import { analyzeSolarRegion } from "./lib/solarAnalysisApi";
 
 const SOLAR_MODELS = [
   "SunForge SF-450",
@@ -383,7 +384,7 @@ function App() {
     (region.type !== "circle" || region.radiusMeters > 1) &&
     (region.type !== "polygon" || region.points.length >= 3);
 
-  const runAnalysis = () => {
+  const runAnalysis = async () => {
     const errors = [];
     if (p1Error || p2Error) errors.push("Fix coordinate formatting first.");
     if (!energyType) errors.push("Choose an energy type.");
@@ -399,27 +400,56 @@ function App() {
     setSearching(true);
     fitRegion(0.55);
 
-    window.setTimeout(() => {
-      const areaKm2 = Math.max(0.1, regionAreaKm2(region));
-      const isSolar = energyType === "solar";
-      const placements = isSolar
-        ? Math.floor(areaKm2 * 145)
-        : Math.floor(areaKm2 * 4.6);
-      const equipmentCost = isSolar ? placements * 900 : placements * 1_850_000;
-      const constructionCost = isSolar ? areaKm2 * 430_000 : areaKm2 * 680_000;
-      const annualMWh = isSolar ? areaKm2 * 1_180 : areaKm2 * 4_900;
+    try {
+      if (energyType === "solar") {
+        const solarResult = await analyzeSolarRegion(region);
+        setResult({
+          type: "solar",
+          label: "Solar panels",
+          areaKm2: solarResult.area_km2,
+          placements: solarResult.panel_count,
+          equipmentCost: solarResult.panel_cost_usd,
+          constructionCost: solarResult.construction_cost_usd,
+          totalCost: solarResult.total_project_cost_usd,
+          annualMWh: solarResult.estimated_annual_output_kwh / 1000,
+          installedCapacityKw: solarResult.installed_capacity_kw,
+          suitabilityScore: solarResult.suitability_score,
+          suitabilityReason: solarResult.suitability_reason,
+          weatherSource: solarResult.weather_source,
+          suitable: solarResult.suitable,
+        });
+      } else {
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 900);
+        });
 
-      setResult({
-        areaKm2,
-        placements,
-        equipmentCost,
-        constructionCost,
-        annualMWh,
-        label: isSolar ? "Solar panels" : "Wind turbines",
-      });
-      setSearching(false);
+        const areaKm2 = Math.max(0.1, regionAreaKm2(region));
+        const placements = Math.floor(areaKm2 * 4.6);
+        const equipmentCost = placements * 1_850_000;
+        const constructionCost = areaKm2 * 680_000;
+        const annualMWh = areaKm2 * 4_900;
+
+        setResult({
+          type: "wind",
+          areaKm2,
+          placements,
+          equipmentCost,
+          constructionCost,
+          annualMWh,
+          label: "Wind turbines",
+        });
+      }
+
       setStatsVisible(true);
-    }, 900);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "The backend could not analyze this region.",
+      );
+    } finally {
+      setSearching(false);
+    }
   };
 
   const popupPosition = useMemo(() => {
@@ -534,6 +564,17 @@ function App() {
                   Estimated production: {result.annualMWh.toLocaleString()}{" "}
                   MWh/year
                 </p>
+                {result.type === "solar" && (
+                  <>
+                    <p>
+                      Installed capacity: {result.installedCapacityKw.toLocaleString()} kW
+                    </p>
+                    <p>Total cost: ${result.totalCost.toLocaleString()}</p>
+                    <p>Suitability score: {result.suitabilityScore}</p>
+                    <p>{result.suitabilityReason}</p>
+                    <p>Weather source: {result.weatherSource}</p>
+                  </>
+                )}
               </div>
             </Popup>
           )}
