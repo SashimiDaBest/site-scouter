@@ -112,11 +112,20 @@ def solar_candidate(
     idx: int,
     solar_spec: SolarAssetSpec,
 ) -> CandidateRegion | None:
+    candidate, _reason = evaluate_solar_candidate(cell, idx, solar_spec)
+    return candidate
+
+
+def evaluate_solar_candidate(
+    cell: dict,
+    idx: int,
+    solar_spec: SolarAssetSpec,
+) -> tuple[CandidateRegion | None, str | None]:
     irradiance = solar_irradiance_proxy(cell["center_lat"])
     usable_ground_area = cell["open_land_area_m2"] * clamp(1.0 - cell["water_ratio"], 0.0, 1.0)
     usable_solar_area = cell["rooftop_area_m2"] + 0.5 * usable_ground_area
     if usable_solar_area < 2_500:
-        return None
+        return None, "low_usable_area"
 
     estimate = analyze_solar_project(
         SolarProjectInputs(
@@ -142,17 +151,26 @@ def solar_candidate(
     )
 
     if estimate.layout.panel_count < 24:
-        return None
+        return None, "low_panel_count"
 
     flatness_score = clamp((8.0 - cell["slope_deg"]) / 8.0, 0.0, 1.0)
     shade_score = clamp(1.0 - cell["shading_factor"], 0.0, 1.0)
-    buildability_score = round(100 * (0.45 * shade_score + 0.25 * flatness_score), 1)
-    score = round(
-        0.7 * estimate.suitability_score + 0.3 * buildability_score,
+    buildability_score = round(
+        100
+        * (
+            0.45 * shade_score
+            + 0.25 * flatness_score
+            + 0.15 * clamp(usable_solar_area / 12_000.0, 0.0, 1.0)
+            + 0.15 * clamp(1.0 - cell["water_ratio"] - cell["built_ratio"] * 0.35, 0.0, 1.0)
+        ),
         1,
     )
-    if score < 55:
-        return None
+    score = round(
+        0.45 * estimate.suitability_score + 0.55 * buildability_score,
+        1,
+    )
+    if score < 48:
+        return None, "low_score"
 
     return CandidateRegion(
         id=f"solar-{idx}",
@@ -180,7 +198,7 @@ def solar_candidate(
             "water_ratio": round(cell["water_ratio"], 3),
             "slope_deg": round(cell["slope_deg"], 2),
         },
-    )
+    ), None
 
 
 def wind_candidate(cell: dict, idx: int) -> CandidateRegion | None:

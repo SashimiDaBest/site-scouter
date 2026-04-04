@@ -244,68 +244,6 @@ function ControlPanel({
                 </label>
               )}
 
-            {(energyType === "infrastructure" || energyType === "solar") && (
-              <label>
-                <HelpButton
-                  label="Imagery provider"
-                  help="USGS is the free default choice. Other providers can be used only if the backend has their credentials."
-                />
-                <select
-                  value={imageryProvider}
-                  onChange={(event) =>
-                    onImageryProviderChange(event.target.value)
-                  }
-                >
-                  {INFRASTRUCTURE_IMAGERY_PROVIDERS.map((provider) => (
-                    <option key={provider.value} value={provider.value}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            {(energyType === "infrastructure" || energyType === "solar") && (
-              <label>
-                <HelpButton
-                  label="Segmentation"
-                  help="This decides how the backend detects useful surfaces such as rooftops, open land, vegetation, and water."
-                />
-                <select
-                  value={segmentationBackend}
-                  onChange={(event) =>
-                    onSegmentationBackendChange(event.target.value)
-                  }
-                >
-                  {INFRASTRUCTURE_SEGMENTATION_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            {(energyType === "infrastructure" || energyType === "solar") && (
-              <label>
-                <HelpButton
-                  label="Terrain"
-                  help="Terrain slope is used to screen out steep cells before build statistics are summarized."
-                />
-                <select
-                  value={terrainProvider}
-                  onChange={(event) =>
-                    onTerrainProviderChange(event.target.value)
-                  }
-                >
-                  {INFRASTRUCTURE_TERRAIN_PROVIDERS.map((provider) => (
-                    <option key={provider.value} value={provider.value}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
           </div>
 
           {energyType &&
@@ -330,7 +268,64 @@ function ControlPanel({
             )}
 
           {(energyType === "infrastructure" || energyType === "solar") && (
-            <div className="spec-grid single-row">
+            <div className="spec-grid">
+              <label>
+                <HelpButton
+                  label="Imagery provider"
+                  help="USGS is the free default choice. Other providers can be used only if the backend has their credentials."
+                />
+                <select
+                  value={imageryProvider}
+                  onChange={(event) =>
+                    onImageryProviderChange(event.target.value)
+                  }
+                >
+                  {INFRASTRUCTURE_IMAGERY_PROVIDERS.map((provider) => (
+                    <option key={provider.value} value={provider.value}>
+                      {provider.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <HelpButton
+                  label="Segmentation"
+                  help="This decides how the backend detects useful surfaces such as rooftops, open land, vegetation, and water."
+                />
+                <select
+                  value={segmentationBackend}
+                  onChange={(event) =>
+                    onSegmentationBackendChange(event.target.value)
+                  }
+                >
+                  {INFRASTRUCTURE_SEGMENTATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <HelpButton
+                  label="Terrain"
+                  help="Terrain slope is used to screen out steep cells before build statistics are summarized."
+                />
+                <select
+                  value={terrainProvider}
+                  onChange={(event) =>
+                    onTerrainProviderChange(event.target.value)
+                  }
+                >
+                  {INFRASTRUCTURE_TERRAIN_PROVIDERS.map((provider) => (
+                    <option key={provider.value} value={provider.value}>
+                      {provider.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <label>
                 <HelpButton
                   label="Cell size (m)"
