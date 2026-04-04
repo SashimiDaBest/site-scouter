@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 from asset_analysis import analyze_asset_polygon
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +11,6 @@ from schemas import (
     SolarAnalysisRequest,
     SolarAnalysisResponse,
 )
-=======
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,7 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import model_predictor
 from schemas import SolarAnalysisRequest, SolarAnalysisResponse
->>>>>>> 8170744edd493d09388cddaeb55063072d9771b7
 from solar_analysis import analyze_solar_polygon
 
 
@@ -61,7 +58,6 @@ def health() -> dict[str, str]:
 @app.post("/solar/analyze", response_model=SolarAnalysisResponse)
 def solar_analyze(request: SolarAnalysisRequest) -> SolarAnalysisResponse:
     return analyze_solar_polygon(request)
-<<<<<<< HEAD
 
 
 @app.post("/asset/analyze", response_model=AssetAnalysisResponse)
@@ -83,5 +79,3 @@ def infrastructure_analyze(
         return analyze_infrastructure_polygon(request)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-=======
->>>>>>> 8170744edd493d09388cddaeb55063072d9771b7
