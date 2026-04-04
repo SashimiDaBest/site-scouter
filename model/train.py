@@ -5,9 +5,10 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from torchmetrics import R2Score
 import dataset
+from dataset import SOLAR_MODEL_FEATURES, WIND_MODEL_FEATURES
 
 batch_size = 32
-train_loader, test_loader, ds_size = dataset.get_data(batch_size=32)
+train_loader, test_loader, ds_size = dataset.get_data("data/processed/solar.csv", SOLAR_MODEL_FEATURES, batch_size=32)
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -71,22 +72,12 @@ def test_loop(model):
     return avg_loss, r2_score
 
 def train_loop():
-
-    print("Habakkuk!")
-    print(ds_size)
-
+    
     model = Habakkuk(ds_size)
-    # loss function and optimizer
     loss_fn = nn.MSELoss()  # mean square error
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    # Initializing in a separate cell so we can easily add more epochs to the same run
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    writer = SummaryWriter('runs/habakkuk_{}'.format(timestamp))
-
     EPOCHS = 10
-
-    print("started!")
 
     for epoch in range(0, EPOCHS):
         model.train(True)
