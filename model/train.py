@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
-import dataset
+import model.random_forest.dataset_random_forest as dataset_random_forest
 
 train_loader, test_loader, ds_size = dataset.get_data()
 
