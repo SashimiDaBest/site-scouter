@@ -53,7 +53,7 @@ Remote inference env vars:
 - `INFRA_MASK_RCNN_ENDPOINT`
 
 Expected response shape:
-
+ 
 ```json
 {
   "source": "unet-service",
