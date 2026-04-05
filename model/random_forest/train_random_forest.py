@@ -126,11 +126,19 @@ def main():
             lookup_csv_path=era5.ERA5_LOOKUP_PATH,
             output_path=era5.ERA5_LOOKUP_CLEAN_PATH,
         )
+        era5.build_solar_era5_climate_lookup(
+            era5_path=args.era5_path,
+            output_path=era5.ERA5_SOLAR_LOOKUP_PATH,
+        )
+        era5.clean_solar_era5_climate_lookup(
+            lookup_csv_path=era5.ERA5_SOLAR_LOOKUP_PATH,
+            output_path=era5.ERA5_SOLAR_LOOKUP_CLEAN_PATH,
+        )
 
     if args.build_dataset:
         era5.build_solar_with_era5_dataset(
             era5_path=args.era5_path,
-            lookup_csv_path=era5.ERA5_LOOKUP_CLEAN_PATH,
+            lookup_csv_path=era5.ERA5_SOLAR_LOOKUP_CLEAN_PATH,
             output_path=args.dataset_path,
         )
 

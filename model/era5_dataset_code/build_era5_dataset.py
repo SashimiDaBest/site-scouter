@@ -29,7 +29,30 @@ def parse_args():
     )
     parser.add_argument("--lookup-path", type=Path, default=era5.ERA5_LOOKUP_PATH, help="Output lookup CSV")
     parser.add_argument("--clean-lookup-path", type=Path, default=era5.ERA5_LOOKUP_CLEAN_PATH, help="Cleaned lookup CSV")
-    parser.add_argument("--output-path", type=Path, default=era5.WIND_WITH_ERA5_PATH, help="Merged wind dataset CSV")
+    parser.add_argument(
+        "--solar-lookup-path",
+        type=Path,
+        default=era5.ERA5_SOLAR_LOOKUP_PATH,
+        help="Solar lookup CSV with additional solar radiation fields",
+    )
+    parser.add_argument(
+        "--clean-solar-lookup-path",
+        type=Path,
+        default=era5.ERA5_SOLAR_LOOKUP_CLEAN_PATH,
+        help="Cleaned solar lookup CSV",
+    )
+    parser.add_argument(
+        "--solar-output-path",
+        type=Path,
+        default=era5.SOLAR_WITH_ERA5_PATH,
+        help="Merged solar dataset CSV",
+    )
+    parser.add_argument(
+        "--wind-output-path",
+        type=Path,
+        default=era5.WIND_WITH_ERA5_PATH,
+        help="Merged wind dataset CSV",
+    )
     return parser.parse_args()
 
 
@@ -43,14 +66,28 @@ def main():
     # )
     # era5.build_era5_climate_lookup(era5_path=args.era5_path, output_path=args.lookup_path)
     # era5.clean_era5_climate_lookup(lookup_csv_path=args.lookup_path, output_path=args.clean_lookup_path)
+    # era5.build_solar_era5_climate_lookup(era5_path=args.era5_path, output_path=args.solar_lookup_path)
+    # era5.clean_solar_era5_climate_lookup(
+    #     lookup_csv_path=args.solar_lookup_path,
+    #     output_path=args.clean_solar_lookup_path,
+    # )
     # era5.build_solar_with_era5_dataset(
     #     era5_path=args.era5_path,
-    #     lookup_csv_path=args.clean_lookup_path,
-    #     output_path=args.output_path,
+    #     lookup_csv_path=args.clean_solar_lookup_path,
+    #     output_path=args.solar_output_path,
     # )
+    # era5.build_wind_with_era5_dataset(
+    #     lookup_csv_path=args.clean_lookup_path,
+    #     output_path=args.wind_output_path,
+    # )
+    era5.build_solar_with_era5_dataset(
+        era5_path=args.era5_path,
+        lookup_csv_path=args.clean_solar_lookup_path,
+        output_path=args.solar_output_path,
+    )
     era5.build_wind_with_era5_dataset(
         lookup_csv_path=args.clean_lookup_path,
-        output_path=args.output_path,
+        output_path=args.wind_output_path,
     )
 
 

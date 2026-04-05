@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: .
+    develop:
+      watch:
+        - path: .
+          action: sync
+          target: /usr/src/app
+        - path: ./Dockerfile
+          action: rebuild
+        - path: ./compose.yaml
+          action: rebuild
+    environment:
+      PYTHONUNBUFFERED: 1
+
+    restart: always
+    ports:
+      - 8000:8000
+
