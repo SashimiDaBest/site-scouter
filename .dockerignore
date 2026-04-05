@@ -1,0 +1,28 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+frontend/dist
+# Large training-only data files (not needed at inference)
+data/solar.csv
+data/wind.csv
+data/solar_with_era5_climate.csv
+data/wind_with_era5_climate.csv
+data/avg_eia_solar_gen.csv
+data/avg_eia_wind_gen.csv
+data/era5_solar_climate_lookup.csv
+data/era5_solar_climate_lookup_clean.csv
+data/processed/wind.csv
+# Trained RF models (only Habakkuk is used at inference)
+model/random_forest/
+model/era5_dataset_code/
+# Misc
+runs/
+output/
+*.md
+SECURITY.md
+CODE_OF_CONDUCT.md
+LICENSE
+test_*.py
