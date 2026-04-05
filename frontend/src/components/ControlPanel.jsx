@@ -46,6 +46,7 @@ function ControlPanel({
   onSelectCandidate,
   onRunAnalysis,
   onOpenTrend,
+  onOpenReport,
 }) {
   const INITIAL_FILTERS = { minScore: "", maxCostM: "", minAreaKm2: "", sortBy: "score" };
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -109,9 +110,18 @@ function ControlPanel({
       {!collapsed && (
         <>
           <section className="panel-section">
-            <div className="panel-section-header">
-              <h3>Region</h3>
-              <p>Define the area you want the backend to analyze.</p>
+            <div className="panel-section-header with-action">
+              <div>
+                <h3>Selection Mode</h3>
+                <p>Define the area you want the backend to analyze.</p>
+              </div>
+              <button
+                type="button"
+                className={advancedOpen ? "expanded region-advanced-toggle" : "region-advanced-toggle"}
+                onClick={onToggleAdvanced}
+              >
+                Advanced settings
+              </button>
             </div>
             <div className="coords-row">
               <label>
@@ -142,20 +152,6 @@ function ControlPanel({
                 {p2Error && <small className="field-error">{p2Error}</small>}
               </label>
             </div>
-          </section>
-
-          <section className="panel-section advanced-block">
-            <div className="panel-section-header">
-              <h3>Selection Mode</h3>
-              <p>Switch between quick rectangle mode and custom map-drawn shapes.</p>
-            </div>
-            <button
-              type="button"
-              className={advancedOpen ? "expanded" : ""}
-              onClick={onToggleAdvanced}
-            >
-              Advanced settings
-            </button>
 
             <div className={`advanced-menu ${advancedOpen ? "open" : ""}`}>
               <div className="mode-row">
@@ -511,18 +507,32 @@ function ControlPanel({
             >
               <div className="asset-result-header">
                 <div>
-                  <h3>{result.label} Summary</h3>
+                  <h3>
+                    {result.type === "data_center_siting"
+                      ? result.label
+                      : `${result.label} Summary`}
+                  </h3>
                   <p>{result.scoreExplanation}</p>
                 </div>
-                <div
-                  className={`score-badge ${result.suitable ? "good" : "caution"}`}
-                >
-                  <span>Score {result.feasibilityScore.toFixed(1)}</span>
-                  <HelpButton
-                    label="Feasibility score"
-                    help="This score is a simple fit check from 0 to 100. Higher means the site better matches the main needs for this asset, such as space, weather, and build practicality."
-                  />
-                </div>
+                {result.type === "data_center_siting" ? (
+                  <button
+                    type="button"
+                    className="secondary-button report-button"
+                    onClick={onOpenReport}
+                  >
+                    Open report
+                  </button>
+                ) : (
+                  <div
+                    className={`score-badge ${result.suitable ? "good" : "caution"}`}
+                  >
+                    <span>Score {result.feasibilityScore.toFixed(1)}</span>
+                    <HelpButton
+                      label="Feasibility score"
+                      help="This score is a simple fit check from 0 to 100. Higher means the site better matches the main needs for this asset, such as space, weather, and build practicality."
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="asset-metrics">
